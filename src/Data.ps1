@@ -346,6 +346,43 @@ function Get-ClaudeProfile {
     return ConvertTo-ClaudeIdentity $profile
 }
 
+function Get-ClaudeCredentialPreferencePath {
+    Join-Path $script:AppDir 'claude-credential-preference.json'
+}
+
+function Get-PreferredClaudeCredentialPath {
+    try {
+        $path = Get-ClaudeCredentialPreferencePath
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+        return [string]((Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json).CredentialPath)
+    } catch {
+        return $null
+    }
+}
+
+function Save-PreferredClaudeCredentialPath([string]$CredentialPath) {
+    if (-not $CredentialPath) { return }
+    try {
+        @{ CredentialPath = $CredentialPath } |
+            ConvertTo-Json |
+            Set-Content -LiteralPath (Get-ClaudeCredentialPreferencePath) -Encoding UTF8
+    } catch {
+        Write-Log "Save-PreferredClaudeCredentialPath failed - $($_.Exception.Message)"
+    }
+}
+
+function Get-ClaudeCredentialPathsInPreferenceOrder([string[]]$Paths) {
+    $ordered = [System.Collections.Generic.List[string]]::new()
+    $preferred = Get-PreferredClaudeCredentialPath
+    if ($preferred -and $Paths -contains $preferred -and (Test-Path -LiteralPath $preferred -PathType Leaf)) {
+        [void]$ordered.Add($preferred)
+    }
+    foreach ($path in @($Paths | Select-Object -Unique)) {
+        if ($path -and -not $ordered.Contains($path)) { [void]$ordered.Add($path) }
+    }
+    return $ordered.ToArray()
+}
+
 function Select-ClaudeCredential {
     param([string[]]$Paths)
 
@@ -419,34 +456,50 @@ function Get-Usage {
     }
 
     $credentialPaths = [System.Collections.Generic.List[string]]::new()
+    $preferredPath = Get-PreferredClaudeCredentialPath
+    if ($preferredPath) { [void]$credentialPaths.Add($preferredPath) }
     if ($script:CredPath) { [void]$credentialPaths.Add($script:CredPath) }
     foreach ($root in Get-WslHomeRoots) {
         if ($root) {
             try { [void]$credentialPaths.Add((Join-Path $root '.claude\.credentials.json')) } catch { }
         }
     }
-
     $candidatePaths = @($credentialPaths | Select-Object -Unique)
-    $tok = Select-ClaudeCredential $candidatePaths
-    if (-not $tok) {
-        $hasCredentialsFile = $false
-        foreach ($path in $candidatePaths) {
-            try {
-                if (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue) {
-                    $hasCredentialsFile = $true
-                    break
-                }
-            } catch { }
-        }
-        if (-not $hasCredentialsFile) {
-            $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
-        }
-        $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return
+    if ($candidatePaths.Count -eq 0) {
+        $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
     }
+    $candidatePaths = @(Get-ClaudeCredentialPathsInPreferenceOrder $candidatePaths)
+
+    $resp = $null
+    $tok = $null
+    $selectedPath = $null
+    $lastAuthException = $null
     try {
-        $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
-            Authorization = "Bearer $tok"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
+        foreach ($credentialPath in $candidatePaths) {
+            try { $candidateToken = (Get-Content $credentialPath -Raw -Encoding UTF8 | ConvertFrom-Json).claudeAiOauth.accessToken } catch { continue }
+            if (-not $candidateToken) { continue }
+
+            try {
+                $resp = Invoke-RestMethod 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec $TimeoutSec -Headers @{
+                    Authorization = "Bearer $candidateToken"; 'anthropic-beta' = 'oauth-2025-04-20'; 'User-Agent' = $script:UA
+                }
+                $tok = [string]$candidateToken
+                $selectedPath = $credentialPath
+                break
+            } catch {
+                $code = $null
+                if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
+                if ($code -eq 401) { $lastAuthException = $_.Exception; continue }
+                throw
+            }
         }
+
+        if (-not $resp) {
+            if ($lastAuthException) { throw $lastAuthException }
+            $script:State.Status = 'auth'; $script:State.Message = 'Not logged in'; return
+        }
+
+        Save-PreferredClaudeCredentialPath $selectedPath
         $resp = Normalize-ClaudeQuotaWindows $resp
         $script:State.Data = $resp; $script:State.Status = 'ok'
         $script:State.Message = ''; $script:State.LastFetch = (Get-Date -Format 'HH:mm')

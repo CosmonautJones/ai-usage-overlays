@@ -150,7 +150,31 @@ Describe 'Get-Usage Claude profile behavior' {
 
         Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/profile' }
     }
+    It 'falls back after a preferred credential returns 401 and persists only its path' {
+        $preferredPath = Join-Path $TestDrive 'preferred-credentials.json'
+        Set-Content -Path $preferredPath -Encoding UTF8 -Value '{"claudeAiOauth":{"accessToken":"preferred-token"}}'
+        Save-PreferredClaudeCredentialPath $preferredPath
+
+        Mock Invoke-RestMethod {
+            if ($Headers.Authorization -eq 'Bearer preferred-token') {
+                $ex = [System.Exception]::new('401 Unauthorized')
+                $ex | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 401 })
+                throw $ex
+            }
+            & $script:usageOk
+        } -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod $script:profileOk -ParameterFilter { $Uri -like '*oauth/profile' }
+
+        Get-Usage
+
+        $script:State.Status | Should -Be 'ok'
+        $saved = Get-Content (Get-ClaudeCredentialPreferencePath) -Raw
+        $saved | Should -Match [regex]::Escape($script:CredPath)
+        $saved | Should -Not -Match 'token-123'
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
+    }
 }
+
 
 Describe 'Get-Usage failure backoff' {
     BeforeEach {
