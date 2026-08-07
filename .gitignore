@@ -4,6 +4,10 @@
 *-error.log
 *-cache.json
 overlay-history.json
+# Holds a live Anthropic OAuth token - must never be committed.
+claude-profile.json
+# Local mirror of WSL transcripts/sessions (hundreds of MB of cached JSONL).
+wsl-mirror/
 .codegraph/
 .worktrees
 dist/

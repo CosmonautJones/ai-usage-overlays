@@ -667,6 +667,7 @@ function Complete-RefreshJobs {
 # data load runs async and each section fills in as its refresh job returns.
 # ---------------------------------------------------------------------------
 Load-UnifiedState
+if ($script:UnifiedStateNeedsRepair) { Save-UnifiedState }
 $script:State.Status  = 'init'
 $script:State.Message = 'loading...'
 Update-AllSections

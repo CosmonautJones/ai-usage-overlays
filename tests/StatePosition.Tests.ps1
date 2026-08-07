@@ -190,3 +190,44 @@ Describe 'Legacy state positioning' {
         $script:window.Top  | Should -Be 624.0
     }
 }
+Describe 'Unified state persistence repair' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        function Write-Log { param([string]$Message) }
+        . (Join-Path $root 'src\UnifiedState.ps1')
+    }
+
+    BeforeEach {
+        $script:Cfg = @{}
+        $script:window = $null
+        $script:StatePath = Join-Path $TestDrive 'unified-overlay-state.json'
+        $script:UnifiedStateNeedsRepair = $false
+        Initialize-UnifiedCfg
+    }
+
+    It 'normalizes legacy timestamp objects before saving' {
+        [pscustomobject]@{
+            LastUpdateCheckAt = [pscustomobject]@{ value = '2026-07-01T12:34:56.0000000Z' }
+        } | ConvertTo-Json | Set-Content -Path $script:StatePath -Encoding UTF8
+
+        Load-UnifiedState
+
+        $script:Cfg.LastUpdateCheckAt | Should -BeOfType [datetime]
+        $script:UnifiedStateNeedsRepair | Should -BeTrue
+
+        Save-UnifiedState
+
+        $saved = Get-Content $script:StatePath -Raw | ConvertFrom-Json
+        $saved.LastUpdateCheckAt | Should -BeOfType [string]
+    }
+
+    It 'marks corrupt state for repair during hidden startup' {
+        Set-Content -Path $script:StatePath -Value '{not valid json' -Encoding UTF8
+
+        Load-UnifiedState
+
+        $script:UnifiedStateNeedsRepair | Should -BeTrue
+        Save-UnifiedState
+        { Get-Content $script:StatePath -Raw | ConvertFrom-Json } | Should -Not -Throw
+    }
+}

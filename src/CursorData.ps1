@@ -37,6 +37,17 @@ function Invoke-Sqlite {
     } catch { $null }
 }
 
+# Windows PowerShell 5.1 silently drops a 'Cookie' entry passed through -Headers
+# (its own CookieContainer wins), so every cursor.com call 401s. Carry the session
+# cookie in a WebRequestSession instead - that path works on both 5.1 and 7+.
+function New-CursorWebSession {
+    param([string]$UserId, [string]$Token)
+    $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $value   = [Uri]::EscapeDataString($UserId + '::' + $Token)
+    $session.Cookies.Add((New-Object System.Net.Cookie('WorkosCursorSessionToken', $value, '/', 'cursor.com')))
+    return $session
+}
+
 function Get-CursorToken {
     # Read accessToken and email from state.vscdb
     $raw = Invoke-Sqlite $script:StateVscdb "SELECT key, value FROM ItemTable WHERE key IN ('cursorAuth/accessToken','cursorAuth/cachedEmail')"
@@ -83,11 +94,11 @@ function Get-CursorUsage {
         return
     }
 
-    $cookie = "WorkosCursorSessionToken=$([Uri]::EscapeDataString($userId + '::' + $tok))"
+    $session = New-CursorWebSession -UserId $userId -Token $tok
 
     try {
         $r = Invoke-RestMethod "https://cursor.com/api/usage?user=$([Uri]::EscapeDataString($userId))" `
-            -Headers @{ Cookie = $cookie } -TimeoutSec $TimeoutSec
+            -WebSession $session -TimeoutSec $TimeoutSec
         $script:LiveData        = $r
         $script:AuthState       = 'ok'
         $script:CursorErrMsg    = ''
@@ -102,7 +113,7 @@ function Get-CursorUsage {
     # Also fetch usage-summary for on-demand spend
     try {
         $script:SummaryData = Invoke-RestMethod 'https://cursor.com/api/usage-summary' `
-            -Headers @{ Cookie = $cookie; Authorization = "Bearer $tok" } -TimeoutSec $TimeoutSec
+            -WebSession $session -Headers @{ Authorization = "Bearer $tok" } -TimeoutSec $TimeoutSec
     } catch { }
 }
 
@@ -118,11 +129,11 @@ function Get-CursorLocalStats {
 
     $tok, $userId, $email = Get-CursorToken
     if (-not $tok -or -not $userId) { return }
-    $cookie = "WorkosCursorSessionToken=$([Uri]::EscapeDataString($userId + '::' + $tok))"
+    $session = New-CursorWebSession -UserId $userId -Token $tok
 
     try {
         $a = Invoke-RestMethod 'https://cursor.com/api/dashboard/get-user-analytics' `
-            -Headers @{ Cookie = $cookie } -TimeoutSec $TimeoutSec
+            -WebSession $session -TimeoutSec $TimeoutSec
     } catch { return }
     if (-not $a -or -not $a.dailyMetrics) { return }
 

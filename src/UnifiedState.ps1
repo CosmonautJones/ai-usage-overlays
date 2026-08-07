@@ -3,6 +3,7 @@
 $script:UnifiedSectionKeys = @('claude', 'codex', 'cursor')
 
 if (-not $script:Cfg) { $script:Cfg = @{} }
+$script:UnifiedStateNeedsRepair = $false
 
 $script:UnifiedCfgDefaults = @{
     Left        = $null
@@ -40,6 +41,28 @@ function ConvertTo-UnifiedSectionsMap($value) {
     return $sections
 }
 
+function ConvertTo-UnifiedDateTime($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [datetime]) { return $value }
+
+    $raw = $value
+    if ($value -isnot [string]) {
+        $prop = $value.PSObject.Properties['value']
+        if (-not $prop) { $prop = $value.PSObject.Properties['Value'] }
+        if (-not $prop) { return $null }
+        $raw = $prop.Value
+    }
+
+    try {
+        return [datetime]::Parse(
+            [string]$raw,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind)
+    } catch {
+        return $null
+    }
+}
+
 function Initialize-UnifiedCfg {
     foreach ($key in $script:UnifiedCfgDefaults.Keys) {
         if (-not $script:Cfg.ContainsKey($key)) {
@@ -58,13 +81,24 @@ function Save-UnifiedState {
             $script:Cfg.Left = $script:window.Left
             $script:Cfg.Top  = $script:window.Top
         }
-        $script:Cfg | ConvertTo-Json -Depth 6 | Set-Content -Path $script:StatePath -Encoding UTF8
+        # Windows PowerShell 5.1 serializes [datetime] as a DisplayHint blob carrying
+        # both 'value' and 'Value' keys, and its own ConvertFrom-Json then refuses the
+        # whole file as having duplicate keys. Persist timestamps as strings instead.
+        $out = @{}
+        foreach ($key in $script:Cfg.Keys) {
+            $val = $script:Cfg[$key]
+            if ($val -is [datetime]) { $val = $val.ToString('o') }
+            $out[$key] = $val
+        }
+        $out | ConvertTo-Json -Depth 6 | Set-Content -Path $script:StatePath -Encoding UTF8
+        $script:UnifiedStateNeedsRepair = $false
     } catch {
         try { Write-Log "Save-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }
 }
 
 function Load-UnifiedState {
+    $script:UnifiedStateNeedsRepair = $false
     try {
         Initialize-UnifiedCfg
         if (-not (Test-Path $script:StatePath)) { return }
@@ -86,11 +120,30 @@ function Load-UnifiedState {
                 Import-AlertStateFromConfig
             }
         }
+
+        $timestamp = $script:Cfg['LastUpdateCheckAt']
+        if ($timestamp -is [string]) {
+            try {
+                $script:Cfg['LastUpdateCheckAt'] = [datetime]::Parse(
+                    $timestamp,
+                    [System.Globalization.CultureInfo]::InvariantCulture,
+                    [System.Globalization.DateTimeStyles]::RoundtripKind)
+            } catch {
+                $script:Cfg['LastUpdateCheckAt'] = $null
+                $script:UnifiedStateNeedsRepair = $true
+            }
+        } elseif ($null -ne $timestamp -and $timestamp -isnot [datetime]) {
+            $parsedTimestamp = ConvertTo-UnifiedDateTime $timestamp
+            $script:Cfg['LastUpdateCheckAt'] = $parsedTimestamp
+            $script:UnifiedStateNeedsRepair = $true
+        }
+
         Initialize-UnifiedCfg
         if ($script:UpdateState -and $script:Cfg.LastUpdateCheckAt) {
             $script:UpdateState.CheckedAt = $script:Cfg.LastUpdateCheckAt
         }
     } catch {
+        $script:UnifiedStateNeedsRepair = $true
         try { Write-Log "Load-UnifiedState failed: $($_.Exception.Message)" } catch { }
     }
 }
