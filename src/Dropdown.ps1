@@ -12,8 +12,15 @@
 # instead. Its handle is created on the WPF UI thread, so the event fires there
 # and can touch the window directly.
 
+function Get-DropdownReferencedAssemblies {
+    @(
+        [System.Drawing.Color].Assembly.Location
+        [System.Windows.Forms.Form].Assembly.Location
+    )
+}
+
 if (-not ('AIUsageGlobalHotkey' -as [type])) {
-    Add-Type -ReferencedAssemblies 'System.Windows.Forms', 'System.Drawing' -TypeDefinition @'
+    Add-Type -ReferencedAssemblies (Get-DropdownReferencedAssemblies) -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
