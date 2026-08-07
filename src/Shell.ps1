@@ -30,7 +30,46 @@ $xaml = @'
     </LinearGradientBrush>
   </Window.Resources>
 
-  <Grid Margin="12">
+  <Grid>
+  <!-- ============================================================
+       Quake view: a full-width terminal strip. Deliberately plain -
+       monospace text, block-character gauges, no rounded corners or
+       gradients - so it reads as a console, not as a widget. Content is
+       built as coloured Runs from PowerShell (see QuakeView.ps1).
+       ============================================================ -->
+  <Border x:Name="quakeRoot" Visibility="Collapsed" BorderThickness="0,1,0,1"
+          Background="#F00A0E14" BorderBrush="#FF1E3A5F">
+    <Grid Margin="10,6,10,7">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <TextBlock x:Name="qHeader" Grid.Row="0" FontFamily="Consolas" FontSize="12"
+                 Foreground="#7B9EC4" TextWrapping="NoWrap" Margin="0,0,0,4"/>
+      <Grid Grid.Row="1">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="qClaude" Grid.Column="0" FontFamily="Consolas" FontSize="12"
+                   Foreground="#C7D5E5" TextWrapping="NoWrap"/>
+        <Border Grid.Column="1" Width="1" Background="#FF1E3A5F" Margin="14,2,14,2"/>
+        <TextBlock x:Name="qCodex" Grid.Column="2" FontFamily="Consolas" FontSize="12"
+                   Foreground="#C7D5E5" TextWrapping="NoWrap"/>
+        <Border Grid.Column="3" Width="1" Background="#FF1E3A5F" Margin="14,2,14,2"/>
+        <TextBlock x:Name="qCursor" Grid.Column="4" FontFamily="Consolas" FontSize="12"
+                   Foreground="#C7D5E5" TextWrapping="NoWrap"/>
+      </Grid>
+      <TextBlock x:Name="qFooter" Grid.Row="2" FontFamily="Consolas" FontSize="11"
+                 Foreground="#4B6A8A" TextWrapping="NoWrap" Margin="0,5,0,0"/>
+    </Grid>
+  </Border>
+
+  <Grid x:Name="pinnedRoot" Margin="12">
   <Border x:Name="mainBorder" BorderThickness="1" CornerRadius="16" ClipToBounds="True">
     <Border.Effect>
       <DropShadowEffect Color="#000000" BlurRadius="16" Opacity="0.5" ShadowDepth="0"/>
@@ -546,6 +585,7 @@ $xaml = @'
     </DockPanel>
   </Border>
   </Grid>
+  </Grid>
 </Window>
 '@
 
@@ -801,6 +841,13 @@ function Measure-ContentHeight([switch]$SkipArrange) {
 # ---------------------------------------------------------------------------
 function Resize-ToContent([switch]$SkipDeferred) {
     $root = $script:window
+    # The quake strip is monitor-wide by definition, so content-driven sizing
+    # would shrink it. Every existing caller (poll completion, section toggle)
+    # funnels through here, so this is the one place that has to know.
+    if ((Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) -and (Test-DropdownMode)) {
+        Resize-QuakeToContent
+        return
+    }
     $size = Measure-ContentHeight
     if ($size.Width  -gt 0) { $root.Width  = $size.Width }
     if ($size.Height -gt 0) { $root.Height = $size.Height }
@@ -1118,4 +1165,6 @@ function Update-AllSections {
         if ($text.Length -gt 63) { $text = $text.Substring(0, 60) + '...' }
         $script:notify.Text = $text
     }
+
+    if (Get-Command Update-QuakeView -ErrorAction SilentlyContinue) { Update-QuakeView }
 }

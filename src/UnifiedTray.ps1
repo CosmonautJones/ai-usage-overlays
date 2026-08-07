@@ -5,6 +5,9 @@
 # ---------------------------------------------------------------------------
 function Wire-UnifiedWindowEvents {
     $script:window.Add_MouseLeftButtonDown({
+        # In dropdown mode the panel is anchored to a monitor edge; dragging it
+        # would both fight the slide animation and overwrite the pinned position.
+        if ((Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) -and (Test-DropdownMode)) { return }
         try {
             $script:window.DragMove()
         } catch {
@@ -13,6 +16,26 @@ function Wire-UnifiedWindowEvents {
             }
         }
         Save-UnifiedState
+    })
+
+    # Quake-style dismissal: Esc, or focus moving to another app. The context
+    # menu is a WinForms strip, so showing it deactivates this window - without
+    # that guard, right-clicking the panel would slide it away.
+    $script:window.Add_PreviewKeyDown({
+        param($s, $e)
+        if ($e.Key -eq [System.Windows.Input.Key]::Escape -and (Test-DropdownMode)) {
+            Hide-Dropdown
+            $e.Handled = $true
+        }
+    })
+    # Off by default: a real quake console stays up until you dismiss it, and a
+    # usage readout you want to glance at while working in another window is
+    # exactly the case where hiding on focus loss is wrong.
+    $script:window.Add_Deactivated({
+        if (-not (Test-DropdownMode)) { return }
+        if (-not [bool]$script:Cfg['DropdownHideOnFocusLoss']) { return }
+        if ($script:ctxStrip -and $script:ctxStrip.Visible) { return }
+        Hide-Dropdown
     })
     $script:window.Add_Loaded({ Resize-ToContent; Position-Window })
     $script:window.Add_Closing({ param($s, $e) if (-not $script:ReallyQuit) { $e.Cancel = $true; $script:window.Hide() } })
@@ -34,9 +57,19 @@ function Wire-UnifiedWindowEvents {
     }
 }
 
-function Toggle-Window {
+function Toggle-PinnedWindow {
     if ($script:window.IsVisible) { $script:window.Hide() }
     else { $script:window.Show(); $script:window.Activate(); $script:window.Topmost = $true }
+}
+
+# Tray-click entry point. Kept separate from Toggle-PinnedWindow so the dropdown
+# path and the pinned path cannot call back into each other.
+function Toggle-Window {
+    if ((Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) -and (Test-DropdownMode)) {
+        Toggle-Dropdown
+        return
+    }
+    Toggle-PinnedWindow
 }
 
 function Show-ContextMenuAtWpfPointer {
@@ -75,6 +108,7 @@ function Quit-App {
         }
         $script:updateJobs.Clear()
     }
+    if (Get-Command Dispose-DropdownHotkey -ErrorAction SilentlyContinue) { Dispose-DropdownHotkey }
     if ($script:notify)    { $script:notify.Visible = $false; $script:notify.Dispose() }
     $script:window.Close()
     $script:window.Dispatcher.InvokeShutdown()
@@ -680,6 +714,79 @@ foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex')
     $script:sectionItems[$key] = $item
     [void]$script:ctxStrip.Items.Add($item)
 }
+
+# View mode: pinned panel vs Quake-style drop-down on a global hotkey
+$script:viewModeItems = @{}
+function Sync-ViewModeMenuItems {
+    $mode = if (Test-DropdownMode) { 'Quake' } else { 'Pinned' }
+    foreach ($k in @($script:viewModeItems.Keys)) { $script:viewModeItems[$k].Checked = ($k -eq $mode) }
+    if ($script:dropdownHotkeyItems) {
+        $cur = [string]$script:Cfg['DropdownHotkey']
+        foreach ($k in @($script:dropdownHotkeyItems.Keys)) { $script:dropdownHotkeyItems[$k].Checked = ($k -eq $cur) }
+    }
+    if ($script:dropdownMonitorItems) {
+        $cur = [string]$script:Cfg['DropdownMonitor']
+        foreach ($k in @($script:dropdownMonitorItems.Keys)) { $script:dropdownMonitorItems[$k].Checked = ($k -eq $cur) }
+    }
+}
+
+$miView = New-StripItem 'View' $null
+foreach ($pair in @(@('Pinned panel', 'Pinned'), @('Quake terminal (hotkey)', 'Quake'))) {
+    $lbl = $pair[0]; $mode = $pair[1]
+    $sub = New-StripItem $lbl ([scriptblock]::Create(
+        "if ('$mode' -eq 'Quake') { Enter-DropdownMode } else { Exit-DropdownMode }; Save-UnifiedState; Sync-ViewModeMenuItems"))
+    $sub.CheckOnClick = $false
+    $script:viewModeItems[$mode] = $sub
+    [void]$miView.DropDownItems.Add($sub)
+}
+[void]$miView.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+
+# Hotkey presets. Any combo the parser understands can be set in the state file;
+# these are the ones unlikely to collide with editors or browsers.
+$script:dropdownHotkeyItems = @{}
+$miHotkey = New-StripItem 'Drop-down hotkey' $null
+foreach ($combo in @('Shift+F11', 'Shift+F12', 'Ctrl+Alt+`', 'Ctrl+Alt+U', 'Win+`')) {
+    $c = $combo
+    $sub = New-StripItem $c ([scriptblock]::Create("Set-DropdownHotkey '$c'; Save-UnifiedState; Sync-ViewModeMenuItems"))
+    $sub.CheckOnClick = $false
+    $script:dropdownHotkeyItems[$c] = $sub
+    [void]$miHotkey.DropDownItems.Add($sub)
+}
+[void]$miView.DropDownItems.Add($miHotkey)
+
+# Monitor picker, built from the live screen list so labels show real resolutions.
+$script:dropdownMonitorItems = @{}
+$miMonitor = New-StripItem 'Drop-down monitor' $null
+foreach ($pair in @(@('Primary', 'Primary'), @('Monitor with mouse', 'Active'))) {
+    $lbl = $pair[0]; $val = $pair[1]
+    $sub = New-StripItem $lbl ([scriptblock]::Create("Set-DropdownMonitor '$val'; Save-UnifiedState; Sync-ViewModeMenuItems"))
+    $sub.CheckOnClick = $false
+    $script:dropdownMonitorItems[$val] = $sub
+    [void]$miMonitor.DropDownItems.Add($sub)
+}
+[void]$miMonitor.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+$screenIndex = 0
+foreach ($scr in (Get-DropdownScreens)) {
+    $screenIndex++
+    $dev = $scr.DeviceName
+    $lbl = '{0}: {1}x{2}{3}' -f $screenIndex, $scr.Bounds.Width, $scr.Bounds.Height, $(if ($scr.Primary) { ' (primary)' } else { '' })
+    $sub = New-StripItem $lbl ([scriptblock]::Create("Set-DropdownMonitor '$dev'; Save-UnifiedState; Sync-ViewModeMenuItems"))
+    $sub.CheckOnClick = $false
+    $script:dropdownMonitorItems[$dev] = $sub
+    [void]$miMonitor.DropDownItems.Add($sub)
+}
+[void]$miView.DropDownItems.Add($miMonitor)
+
+$miHideFocus = New-StripItem 'Hide when it loses focus' {
+    $script:Cfg['DropdownHideOnFocusLoss'] = -not [bool]$script:Cfg['DropdownHideOnFocusLoss']
+    $miHideFocus.Checked = [bool]$script:Cfg['DropdownHideOnFocusLoss']
+    Save-UnifiedState
+}
+$miHideFocus.CheckOnClick = $false
+$miHideFocus.Checked = [bool]$script:Cfg['DropdownHideOnFocusLoss']
+[void]$miView.DropDownItems.Add($miHideFocus)
+[void]$script:ctxStrip.Items.Add($miView)
+Sync-ViewModeMenuItems
 Add-Separator
 
 # Snap to corner

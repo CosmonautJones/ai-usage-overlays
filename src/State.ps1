@@ -130,6 +130,14 @@ function Snap-ToCorner([string]$corner) {
 
 function Position-Window {
     if ($script:Positioned) { return }
+    # Dropdown mode owns its own geometry (centred on the chosen monitor, parked
+    # above the work area). This fires from Window.Loaded on the first Show, so
+    # without the bail-out it would overwrite that with the saved pinned position
+    # and then clamp it to a screen edge.
+    if ((Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) -and (Test-DropdownMode)) {
+        $script:Positioned = $true
+        return
+    }
     $script:Positioned = $true
     if ($null -ne $script:Cfg.Left) {
         $script:window.Left = [double]$script:Cfg.Left

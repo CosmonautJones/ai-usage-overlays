@@ -346,6 +346,8 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
+. (Join-Path $script:AppDir 'src\QuakeView.ps1')
+. (Join-Path $script:AppDir 'src\Dropdown.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedTray.ps1')
 
 # ---------------------------------------------------------------------------
@@ -668,6 +670,8 @@ function Complete-RefreshJobs {
 # ---------------------------------------------------------------------------
 Load-UnifiedState
 if ($script:UnifiedStateNeedsRepair) { Save-UnifiedState }
+if (Test-DropdownMode) { Initialize-DropdownPinnedPosition }
+Sync-ViewModeMenuItems   # menu was built from defaults before state was read
 $script:State.Status  = 'init'
 $script:State.Message = 'loading...'
 Update-AllSections
@@ -729,7 +733,14 @@ function Build-And-Show {
         }
         Wire-UnifiedWindowEvents
         try {
-            if (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) { Show-UnifiedWindowWhenRendered }
+            # Dropdown mode starts parked off-screen: the hotkey brings it in, so
+            # there is no window to show at startup.
+            if (Test-DropdownMode) {
+                Apply-DropdownChrome
+                Register-DropdownHotkey | Out-Null
+            } elseif (-not $Hidden -and -not [bool]$script:Cfg.StartHidden) {
+                Show-UnifiedWindowWhenRendered
+            }
             return $true
         } catch {
             if ($_.Exception.Message -notmatch 'VisualTarget') { throw }
@@ -752,6 +763,18 @@ $script:tickTimer.Start()
 
 # Write PID file so Uninstall.bat can terminate the process.
 try { [System.IO.File]::WriteAllText($script:PidPath, "$PID") } catch { }
+
+# An exception thrown inside a timer tick or event handler surfaces as an opaque
+# 'Exception calling "Run"' with only this line in the stack. Log the real
+# exception and its stack before it unwinds, so UI-thread faults are diagnosable.
+try {
+    $script:window.Dispatcher.Add_UnhandledException({
+        param($s, $e)
+        try {
+            Write-Log ("Dispatcher exception: {0}`n{1}" -f $e.Exception.Message, $e.Exception.StackTrace)
+        } catch { }
+    })
+} catch { }
 
 [System.Windows.Threading.Dispatcher]::Run()
 

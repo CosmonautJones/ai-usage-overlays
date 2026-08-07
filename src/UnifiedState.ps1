@@ -19,6 +19,11 @@ $script:UnifiedCfgDefaults = @{
     LastUpdateCheckAt = $null
     LastNotifiedUpdateVersion = $null
     AlertState = @{}
+    ViewMode = 'Pinned'              # 'Pinned' | 'Quake'
+    DropdownHotkey = 'Shift+F11'
+    DropdownMonitor = 'Primary'      # 'Primary' | 'Active' | a Screen DeviceName
+    DropdownOpacity = 0.85
+    DropdownHideOnFocusLoss = $false
 }
 
 function ConvertTo-UnifiedSectionsMap($value) {
@@ -77,7 +82,11 @@ Initialize-UnifiedCfg
 function Save-UnifiedState {
     try {
         Initialize-UnifiedCfg
-        if ($script:window) {
+        $dropdownActive = $false
+        if (Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) {
+            $dropdownActive = Test-DropdownMode
+        }
+        if ($script:window -and -not $dropdownActive) {
             $script:Cfg.Left = $script:window.Left
             $script:Cfg.Top  = $script:window.Top
         }
@@ -104,7 +113,7 @@ function Load-UnifiedState {
         if (-not (Test-Path $script:StatePath)) { return }
 
         $s = Get-Content $script:StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion')) {
+        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion', 'ViewMode', 'DropdownHotkey', 'DropdownMonitor', 'DropdownOpacity', 'DropdownHideOnFocusLoss')) {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
