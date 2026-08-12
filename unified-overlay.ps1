@@ -189,7 +189,6 @@ function Invoke-OverlaySnapshot {
     )
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $env:PATH = "$script:AppDir;$env:PATH"
 
     . (Join-Path $script:AppDir 'src\Config.ps1')
     . (Join-Path $script:AppDir 'src\Format.ps1')
@@ -387,9 +386,13 @@ $script:ClaudeUsageScript = {
     $script:AppDir   = $AppDir
     $script:CredPath = $CredPath
     $script:ErrLog   = $ErrLog
-    # Invoke-Sqlite resolves sqlite3.exe via $PSScriptRoot (src\) then PATH; the
-    # bundled exe lives in the app root, so make it findable via PATH here.
-    $env:PATH = "$AppDir;$env:PATH"
+    # NEVER mutate $env:PATH here. This scriptblock re-runs in-process (ThreadJob)
+    # on every poll, so prepending grew PATH past the Win32 32,767-char env-var
+    # limit after ~875 polls (a few days to ~a week, depending on the adaptive
+    # poll interval). Past that, EVERY child-process spawn fails process-wide and
+    # the Cursor section reports "Cannot read Cursor token from state.vscdb"
+    # forever, with no error logged anywhere.
+    # Invoke-Sqlite locates the bundled sqlite3.exe itself via Resolve-Sqlite3Path.
 
     . (Join-Path $AppDir 'src\Config.ps1')
     . (Join-Path $AppDir 'src\History.ps1')

@@ -17,17 +17,30 @@ function Fmt-Num([double]$n) {
 # ---------------------------------------------------------------------------
 # SQLite helper - reads Cursor's SQLite databases via bundled sqlite3.exe
 # ---------------------------------------------------------------------------
+# The bundled sqlite3.exe ships in the app ROOT ({app}\sqlite3.exe) while these
+# modules install to {app}\src, so resolution must walk one level up. Relying on
+# PATH instead is what used to break the Cursor section outright - see the
+# PATH-hygiene note in unified-overlay.ps1.
+function Resolve-Sqlite3Path {
+    param([string]$BaseDir)
+
+    if ($BaseDir) {
+        $candidates = @((Join-Path $BaseDir 'sqlite3.exe'))
+        $parent = Split-Path $BaseDir -Parent
+        if ($parent) { $candidates += (Join-Path $parent 'sqlite3.exe') }
+        foreach ($candidate in $candidates) {
+            if (Test-Path -LiteralPath $candidate) { return $candidate }
+        }
+    }
+
+    $cmd = Get-Command sqlite3.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return $null
+}
+
 function Invoke-Sqlite {
     param([string]$DbPath, [string]$Query)
-    $exe = $null
-    if ($PSScriptRoot) {
-        $candidate = Join-Path $PSScriptRoot 'sqlite3.exe'
-        if (Test-Path $candidate) { $exe = $candidate }
-    }
-    if (-not $exe) {
-        $cmd = Get-Command sqlite3.exe -ErrorAction SilentlyContinue
-        if ($cmd) { $exe = $cmd.Source }
-    }
+    $exe = Resolve-Sqlite3Path $PSScriptRoot
     if (-not $exe) { return $null }
     try {
         # sqlite3 -json may return output as a string array (one line per line);
