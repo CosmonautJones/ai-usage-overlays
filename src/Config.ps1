@@ -16,6 +16,24 @@ $script:RepoOwner      = 'tjones-gss'
 $script:RepoName       = 'ai-usage-overlays'
 $script:UpdateChannel  = 'release'
 
+# ---------------------------------------------------------------------------
+# Shared provider health vocabulary
+#
+# Every provider reports auth health with the SAME words, so one predicate
+# decides what "broken" means everywhere:
+#   init | ok | stale | auth | notoken
+#
+# 'auth'/'notoken' mean the user must act, so they must reach the UI. Codex
+# shipped without any such contract and swallowed a 401 for 13 days: its local
+# logs still parsed, so it reported healthy while the live quota was dead. Any
+# new provider must set an auth state and message rather than returning $null.
+# ---------------------------------------------------------------------------
+function Test-ProviderAuthFailed {
+    param([string]$AuthState)
+
+    return ($AuthState -eq 'auth' -or $AuthState -eq 'notoken')
+}
+
 # WSL can contain the current Codex and Claude state even when the overlay runs
 # in Windows. Discovery is cached because every poll process can ask for it more
 # than once, and no WSL problem may interrupt the poll.

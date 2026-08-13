@@ -13,10 +13,21 @@
 # and can touch the window directly.
 
 function Get-DropdownReferencedAssemblies {
-    @(
-        [System.Drawing.Color].Assembly.Location
-        [System.Windows.Forms.Form].Assembly.Location
-    )
+    $refs = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($type in @([System.Drawing.Color], [System.Windows.Forms.Form],
+                        # .NET 9 type-forwarded System.Windows.Forms.Message into
+                        # System.Windows.Forms.Primitives. WndProc(ref Message m)
+                        # then fails to compile with CS1069 unless the assembly that
+                        # actually holds Message is referenced too. Resolve it from
+                        # the type so this keeps working wherever it gets forwarded.
+                        [System.Windows.Forms.Message])) {
+        $location = $null
+        try { $location = $type.Assembly.Location } catch { }
+        if ($location -and -not $refs.Contains($location)) { [void]$refs.Add($location) }
+    }
+
+    return @($refs)
 }
 
 if (-not ('AIUsageGlobalHotkey' -as [type])) {

@@ -63,6 +63,18 @@ if (-not $script:CodexSessionsDir) {
 $script:CodexStats = $null
 $script:CodexStatsFileCache = @{}
 
+# Mirrors Cursor's contract (see Test-ProviderAuthFailed in Config.ps1) so both
+# providers report auth trouble the same way instead of failing silently.
+$script:CodexAuthState = 'init'
+$script:CodexErrMsg    = ''
+
+function Set-CodexAuthState {
+    param([string]$State, [string]$Message = '')
+
+    $script:CodexAuthState = $State
+    $script:CodexErrMsg    = $Message
+}
+
 function Convert-CodexCacheDate {
     param($Value)
 
@@ -403,22 +415,32 @@ function ConvertFrom-CodexUsageResponse($obj) {
 # Returns $null on any failure (missing/expired token, network error) so the
 # overlay falls back to whatever it already has instead of breaking.
 function Get-CodexLiveUsage {
-    param([int]$TimeoutSec = 15)
+    param(
+        [int]$TimeoutSec = 15,
+        [string]$AuthPath
+    )
 
-    $authPath = Join-Path $env:USERPROFILE '.codex\auth.json'
-    if (-not (Test-Path -LiteralPath $authPath)) { return $null }
+    $authPath = if ($AuthPath) { $AuthPath } else { Join-Path $env:USERPROFILE '.codex\auth.json' }
+    if (-not (Test-Path -LiteralPath $authPath)) {
+        Set-CodexAuthState 'notoken' 'No Codex login found - run codex login'
+        return $null
+    }
 
     try {
         $auth = Get-Content -LiteralPath $authPath -Raw | ConvertFrom-Json
     } catch {
         Write-CodexLog "Get-CodexLiveUsage: cannot read auth.json - $($_.Exception.Message)"
+        Set-CodexAuthState 'notoken' 'Cannot read Codex auth.json - run codex login'
         return $null
     }
 
     $token = $null
     if ($auth.tokens -and $auth.tokens.access_token) { $token = $auth.tokens.access_token }
     elseif ($auth.access_token) { $token = $auth.access_token }
-    if (-not $token) { return $null }
+    if (-not $token) {
+        Set-CodexAuthState 'notoken' 'No Codex access token - run codex login'
+        return $null
+    }
 
     $acct = $auth.account_id
     if (-not $acct -and $auth.tokens) { $acct = $auth.tokens.account_id }
@@ -435,9 +457,22 @@ function Get-CodexLiveUsage {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $resp = Invoke-RestMethod -Uri 'https://chatgpt.com/backend-api/wham/usage' `
             -Headers $headers -Method GET -TimeoutSec $TimeoutSec
+        Set-CodexAuthState 'ok' ''
         return ConvertFrom-CodexUsageResponse $resp
     } catch {
-        Write-CodexLog "Get-CodexLiveUsage: request failed - $($_.Exception.Message)"
+        $message = $_.Exception.Message
+        Write-CodexLog "Get-CodexLiveUsage: request failed - $message"
+
+        # Both the access token AND the refresh token expire, and once the
+        # refresh token is gone no code path can recover it - only an interactive
+        # `codex login`. Name that remedy instead of echoing a bare 401.
+        $code = $null
+        if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
+        if ($code -eq 401 -or $message -match '\b401\b') {
+            Set-CodexAuthState 'auth' 'Codex login expired - run codex login'
+        } else {
+            Set-CodexAuthState 'stale' $message
+        }
         return $null
     }
 }

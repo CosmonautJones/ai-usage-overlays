@@ -374,6 +374,10 @@ $xaml = @'
 
           <StackPanel x:Name="codexBody">
            <StackPanel x:Name="codexFull">
+            <!-- Auth trouble the user must act on (expired login). Collapsed when healthy. -->
+            <TextBlock x:Name="codexErrText" Text="" Foreground="#F87171"
+                       FontSize="11" FontFamily="Bahnschrift SemiBold"
+                       TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
             <!-- Weekly metric (Codex now exposes a single weekly limit) -->
             <StackPanel Margin="0,0,0,10">
               <Grid Margin="0,0,0,3">
@@ -996,7 +1000,29 @@ function Update-ClaudeSection {
 # ---------------------------------------------------------------------------
 # Update-CodexSection - reads $script:CodexStats; fills codex* elements.
 # ---------------------------------------------------------------------------
+# Shared auth-error line renderer. Codex uses a dedicated TextBlock; Cursor
+# overloads its on-demand hero slot (see Update-CursorSection). Both decide via
+# Test-ProviderAuthFailed so "broken" means exactly one thing across providers.
+function Set-SectionAuthError {
+    param([string]$Name, [string]$AuthState, [string]$Message)
+
+    $el = $script:window.FindName($Name)
+    if (-not $el) { return $false }
+
+    if (Test-ProviderAuthFailed $AuthState) {
+        $el.Text = if ($Message) { $Message } else { 'Login required' }
+        $el.Visibility = [System.Windows.Visibility]::Visible
+        return $true
+    }
+
+    $el.Text = ''
+    $el.Visibility = [System.Windows.Visibility]::Collapsed
+    return $false
+}
+
 function Update-CodexSection {
+    Set-SectionAuthError 'codexErrText' $script:CodexAuthState $script:CodexErrMsg | Out-Null
+
     $s = $script:CodexStats
     if (-not $s) {
         Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
@@ -1075,7 +1101,7 @@ function Update-CursorSection {
     # On-demand spend from usage-summary
     $od = $script:window.FindName('onDemandText')
     if ($od) {
-        if ($script:AuthState -eq 'auth' -or $script:AuthState -eq 'notoken') {
+        if (Test-ProviderAuthFailed $script:AuthState) {
             $od.FontSize = 11
             $od.Text = $script:CursorErrMsg
             $od.Foreground = NewBrush '#F87171'

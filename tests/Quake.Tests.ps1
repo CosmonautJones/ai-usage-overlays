@@ -106,4 +106,17 @@ Describe 'Dropdown assembly references' {
             Test-Path -LiteralPath $reference -PathType Leaf | Should -BeTrue
         }
     }
+
+    # Checking the paths merely EXIST let CS1069 through and stopped the overlay
+    # from starting at all on .NET 9: System.Windows.Forms.Message is
+    # type-forwarded to System.Windows.Forms.Primitives, so WndProc(ref Message m)
+    # would not compile. Assert the type actually built.
+    It 'compiles the global hotkey type on this runtime' {
+        ('AIUsageGlobalHotkey' -as [type]) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'references the assembly that really holds System.Windows.Forms.Message' {
+        $references = @(Get-DropdownReferencedAssemblies)
+        $references | Should -Contain ([System.Windows.Forms.Message].Assembly.Location)
+    }
 }

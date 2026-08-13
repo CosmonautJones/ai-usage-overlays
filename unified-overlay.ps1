@@ -203,6 +203,8 @@ function Invoke-OverlaySnapshot {
     $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
     $script:Stats = $null
     $script:CodexStats = $null
+    $script:CodexAuthState = 'init'
+    $script:CodexErrMsg = ''
     $script:LiveData = $null
     $script:SummaryData = $null
     $script:LocalData = $null
@@ -260,10 +262,20 @@ function Invoke-OverlaySnapshot {
         }
     }
     if ($selectedProviders['codex']) {
-        $codexStatus = if ($script:CodexStats) { 'ok' } elseif ($codexError) { 'error' } else { 'unavailable' }
+        # Aligned with cursor below: an auth failure outranks successfully parsed
+        # local stats. Codex used to report 'ok' while its live quota 401'd for
+        # 13 days, because the session logs still parsed fine.
+        $codexStatus =
+            if ($script:CodexAuthState -eq 'notoken') { 'unavailable' }
+            elseif (Test-ProviderAuthFailed $script:CodexAuthState) { $script:CodexAuthState }
+            elseif ($script:CodexStats) { 'ok' }
+            elseif ($codexError) { 'error' }
+            else { 'unavailable' }
+
         $providers.codex = [ordered]@{
             selected = $true
             status = $codexStatus
+            message = $script:CodexErrMsg
             stats = $script:CodexStats
             error = $codexError
         }
@@ -455,8 +467,10 @@ $script:CodexStatsScript = {
     Get-CodexStats
 
     @{
-        Kind       = 'CodexStats'
-        CodexStats = $script:CodexStats
+        Kind           = 'CodexStats'
+        CodexStats     = $script:CodexStats
+        CodexAuthState = $script:CodexAuthState
+        CodexErrMsg    = $script:CodexErrMsg
     }
 }
 
@@ -641,6 +655,8 @@ function Complete-RefreshJobs {
                     }
                     'CodexStats' {
                         $script:CodexStats = $r['CodexStats']
+                        $script:CodexAuthState = $r['CodexAuthState']
+                        $script:CodexErrMsg = $r['CodexErrMsg']
                     }
                     default {
                         Write-Log "Complete-RefreshJobs: unknown result kind '$resultKind'."
