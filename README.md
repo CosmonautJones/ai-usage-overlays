@@ -26,22 +26,26 @@ Always-on-top Windows HUD for Claude Code, Codex, and Cursor IDE usage in one tr
 
 ## Install
 
-**Recommended** - download `AIUsageOverlaySetup.exe` from the [latest GitHub release](https://github.com/tjones-gss/ai-usage-overlays/releases/latest), then run it.
+This copy lives at [CosmonautJones/ai-usage-overlays](https://github.com/CosmonautJones/ai-usage-overlays).
 
-The setup app installs AI Usage Overlay for your Windows user, adds Start Menu entries, creates the login startup shortcut, and launches the overlay automatically. No git, no Python, and no admin rights are required.
-
-**PowerShell fallback** - if you cannot use the setup EXE, paste this into PowerShell, or hand it to your Claude / Cursor agent:
+**PowerShell** — paste this into PowerShell, or hand it to your Claude / Cursor agent:
 
 ```powershell
-irm https://raw.githubusercontent.com/tjones-gss/ai-usage-overlays/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/CosmonautJones/ai-usage-overlays/master/install.ps1 | iex
 ```
 
-This downloads the repo zip, installs the same script app under `%LOCALAPPDATA%\AIUsageOverlay`, and launches the unified overlay automatically.
+This downloads the repo zip, installs the script app under `%LOCALAPPDATA%\AIUsageOverlay`, and launches the unified overlay automatically.
 
-**Let your AI agent do it** - paste this into Claude Code or Cursor chat:
-> Run this in PowerShell to install the AI usage overlay: `irm https://raw.githubusercontent.com/tjones-gss/ai-usage-overlays/master/install.ps1 | iex`
+**Let your AI agent do it** — paste this into Claude Code or Cursor chat:
+> Run this in PowerShell to install the AI usage overlay: `irm https://raw.githubusercontent.com/CosmonautJones/ai-usage-overlays/master/install.ps1 | iex`
 
-**Manual developer install** - clone the repo and run `Install.bat`. Login autostart uses `Start-Unified.vbs`.
+**Manual developer install** — clone this repo and run `Install.bat`. Login autostart uses `Start-Unified.vbs`.
+
+```powershell
+git clone https://github.com/CosmonautJones/ai-usage-overlays.git
+```
+
+Installer EXEs from GitHub Releases are optional; use the PowerShell path above if no release asset is published yet on this account.
 
 ## Requirements
 
@@ -149,14 +153,13 @@ The fallback/manual install can still be removed by running `Uninstall.bat` from
 - **Customizable sections** - hide providers you do not use, and expand/collapse individual sections
 - **Fast startup** - cached transcript/session parsing makes warm starts quick
 - **Async refresh jobs** - provider data loads in background jobs so the HUD can appear immediately
-- **Color themes** - Global Shop, Deep Space, Ocean, Mono, and Black & White
+- **Color themes** - several built-in palettes (including dark studio looks)
 - **Drag to reposition** - position is saved between restarts
 - **Opacity control** - 100%, 80%, 60%, or 40%
 - **Snap to corners** - top-left, top-right, bottom-left, or bottom-right
 - **Threshold alerts** - warning and critical notifications for Claude quota thresholds
 - **History graph** - optional sparkline for recent Claude quota movement
-- **GitHub release updates** - check for setup EXE updates from the tray and install them in place
-- **GSS branding** - Global Shop Solutions identity in the footer
+- **Optional release updates** - check for setup EXE updates from the tray when a release exists
 
 ## How It Works
 
@@ -199,6 +202,6 @@ Build the installer locally with Inno Setup 6 installed:
 pwsh -NoLogo -NoProfile -File packaging\build-installer.ps1
 ```
 
-The installer artifact is written to `dist\AIUsageOverlaySetup.exe`. Release builds also publish this artifact from the `Release Installer` GitHub Actions workflow.
+The installer artifact is written to `dist\AIUsageOverlaySetup.exe`. Release builds can publish this artifact from the `Release Installer` GitHub Actions workflow.
 
-The default branch is `master`. The old provider-specific branches have been retired; current development happens against the unified overlay on `master`. Use short-lived feature branches for normal work and merge through pull requests unless a maintainer is intentionally shipping a small release directly.
+The default branch is `master`. Current development happens against the unified overlay on `master`. Use short-lived feature branches for normal work and merge through pull requests unless a maintainer is intentionally shipping a small release directly.
