@@ -390,6 +390,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\CodexData.ps1')
 . (Join-Path $script:AppDir 'src\CursorData.ps1')
 . (Join-Path $script:AppDir 'src\GrokData.ps1')
+. (Join-Path $script:AppDir 'src\ProviderLogin.ps1')
 . (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
@@ -606,7 +607,8 @@ function Start-OverlayBackgroundJob {
 function Start-AllRefreshJobs {
     param(
         [int]$UsageTimeoutSec = 20,
-        [switch]$Force
+        [switch]$Force,
+        [string[]]$Kind
     )
 
     $jobs = @(
@@ -632,40 +634,45 @@ function Start-AllRefreshJobs {
         }
     )
 
-    foreach ($jobSpec in $jobs) {
-        $kind = $jobSpec.Kind
+    if ($Kind -and $Kind.Count -gt 0) {
+        $allow = @($Kind)
+        $jobs = @($jobs | Where-Object { $allow -contains $_.Kind })
+    }
 
-        if ($script:pollJobs.ContainsKey($kind)) {
-            $existing = $script:pollJobs[$kind]
+    foreach ($jobSpec in $jobs) {
+        $jobKind = $jobSpec.Kind
+
+        if ($script:pollJobs.ContainsKey($jobKind)) {
+            $existing = $script:pollJobs[$jobKind]
             if ($existing.State -eq 'Running' -or $existing.State -eq 'NotStarted') {
                 $ceilingSeconds = (2 * $UsageTimeoutSec + 20)
-                if (-not $script:pollJobStartedAt.ContainsKey($kind)) {
-                    $script:pollJobStartedAt[$kind] = Get-Date
-                    Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                if (-not $script:pollJobStartedAt.ContainsKey($jobKind)) {
+                    $script:pollJobStartedAt[$jobKind] = Get-Date
+                    Write-Log "Start-AllRefreshJobs: previous $jobKind refresh still running; skipping this source."
                     continue
                 }
 
-                $elapsedSeconds = ((Get-Date) - $script:pollJobStartedAt[$kind]).TotalSeconds
+                $elapsedSeconds = ((Get-Date) - $script:pollJobStartedAt[$jobKind]).TotalSeconds
                 if ($elapsedSeconds -gt $ceilingSeconds) {
-                    Write-Log "Start-AllRefreshJobs: previous $kind refresh hung > $ceilingSeconds seconds; reaping and restarting."
+                    Write-Log "Start-AllRefreshJobs: previous $jobKind refresh hung > $ceilingSeconds seconds; reaping and restarting."
                     Stop-Job $existing -ErrorAction SilentlyContinue
                     Remove-Job $existing -Force -ErrorAction SilentlyContinue
-                    $script:pollJobs.Remove($kind)
-                    $script:pollJobStartedAt.Remove($kind)
+                    $script:pollJobs.Remove($jobKind)
+                    $script:pollJobStartedAt.Remove($jobKind)
                 } else {
-                    Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                    Write-Log "Start-AllRefreshJobs: previous $jobKind refresh still running; skipping this source."
                     continue
                 }
             }
 
-            if ($script:pollJobs.ContainsKey($kind)) {
+            if ($script:pollJobs.ContainsKey($jobKind)) {
                 Remove-Job $existing -Force -ErrorAction SilentlyContinue
-                $script:pollJobs.Remove($kind)
+                $script:pollJobs.Remove($jobKind)
             }
         }
 
-        $script:pollJobs[$kind] = Start-OverlayBackgroundJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
-        $script:pollJobStartedAt[$kind] = Get-Date
+        $script:pollJobs[$jobKind] = Start-OverlayBackgroundJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
+        $script:pollJobStartedAt[$jobKind] = Get-Date
     }
 }
 
@@ -775,7 +782,7 @@ $script:pollTimer.add_Tick({ Start-AllRefreshJobs })
 # so, marshals their data onto the UI thread and renders immediately.
 $script:jobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:jobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
-$script:jobTimer.add_Tick({ [void](Complete-RefreshJobs) })
+$script:jobTimer.add_Tick({ [void](Complete-RefreshJobs); Complete-ProviderLoginWatchers })
 
 # Tick timer: refreshes reset countdowns/clock every 30s (render only, no I/O,
 # no layout Measure - Resize-ToContent is intentionally NOT in this path).

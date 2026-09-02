@@ -100,6 +100,14 @@ function Quit-App {
         }
         $script:pollJobs.Clear()
     }
+    if ($script:loginWatchJobs) {
+        foreach ($job in @($script:loginWatchJobs.Values)) {
+            if ($job -is [System.Management.Automation.Job]) {
+                Remove-Job $job -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $script:loginWatchJobs.Clear()
+    }
     if ($script:updateJobs) {
         foreach ($job in @($script:updateJobs.Values)) {
             if ($job -is [System.Management.Automation.Job]) {
@@ -112,6 +120,71 @@ function Quit-App {
     if ($script:notify)    { $script:notify.Visible = $false; $script:notify.Dispose() }
     $script:window.Close()
     $script:window.Dispatcher.InvokeShutdown()
+}
+
+
+function Invoke-ProviderLogin {
+    param(
+        [Parameter(Mandatory = $true)][string]$Provider,
+        [Parameter(Mandatory = $true)][string]$CliName
+    )
+
+    $resolved = Resolve-ProviderLoginCli $CliName
+    if (-not $resolved) { return }
+
+    $proc = Start-ProviderLoginProcess $resolved
+    if (-not $proc) { return }
+
+    if (-not $script:loginWatchJobs) { $script:loginWatchJobs = @{} }
+
+    $script:loginWatchJobs[$Provider] = Start-OverlayBackgroundJob -ScriptBlock {
+        param($ProcessId, $ProviderName)
+        try {
+            $p = Get-Process -Id $ProcessId -ErrorAction Stop
+            $p.WaitForExit()
+        } catch { }
+        @{ Kind = 'ProviderLoginDone'; Provider = $ProviderName }
+    } -ArgumentList @($proc.Id, $Provider)
+
+    if ($script:jobTimer -and -not $script:jobTimer.IsEnabled) {
+        $script:jobTimer.Start()
+    }
+}
+
+function Complete-ProviderLoginWatchers {
+    if (-not $script:loginWatchJobs -or $script:loginWatchJobs.Count -eq 0) { return }
+
+    foreach ($provider in @($script:loginWatchJobs.Keys)) {
+        $job = $script:loginWatchJobs[$provider]
+        if ($job.State -eq 'Running' -or $job.State -eq 'NotStarted') { continue }
+
+        try {
+            $results = @(Receive-Job $job -ErrorAction SilentlyContinue)
+            $r = $results | Where-Object { $_ -is [hashtable] -and $_.ContainsKey('Provider') } | Select-Object -Last 1
+            $name = if ($r) { [string]$r['Provider'] } else { $provider }
+            $kinds = @(Get-ProviderLoginRefreshKinds $name)
+            if ($kinds.Count -gt 0) {
+                Start-AllRefreshJobs -Force -Kind $kinds
+            }
+        } catch {
+            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log "Provider login watcher failed: $($_.Exception.Message)"
+            }
+        } finally {
+            Remove-Job $job -Force -ErrorAction SilentlyContinue
+            $script:loginWatchJobs.Remove($provider)
+        }
+    }
+}
+
+function Sync-ProviderLoginMenuItems {
+    if (-not $script:loginItems) { return }
+    foreach ($cli in @($script:loginItems.Keys)) {
+        $item = $script:loginItems[$cli]
+        $resolved = Resolve-ProviderLoginCli $cli
+        $item.Text = Get-ProviderLoginMenuCaption -CliName $cli -Resolved $resolved
+        $item.Enabled = [bool]$resolved
+    }
 }
 
 function Invoke-ManualRefresh {
@@ -136,6 +209,8 @@ function Invoke-ManualRefresh {
 $script:themeItems   = @{}
 $script:opacityItems = @{}
 $script:sectionItems = @{}
+$script:loginItems  = @{}
+$script:loginWatchJobs = @{}
 $script:updateItems  = @{}
 $script:updateJobs   = @{}
 
@@ -714,6 +789,20 @@ foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex')
     $script:sectionItems[$key] = $item
     [void]$script:ctxStrip.Items.Add($item)
 }
+
+# Log in: spawn a visible CLI (`claude login` / `codex login` / `grok login`).
+Add-Separator
+$miLogin = New-StripItem 'Log in' $null
+foreach ($pair in @(@('Claude','claude'), @('Codex','codex'), @('Grok','grok'))) {
+    $provider = $pair[0]
+    $cli = $pair[1]
+    $sub = New-StripItem (Get-ProviderLoginMenuCaption -CliName $cli -Resolved $null) ([scriptblock]::Create("Invoke-ProviderLogin -Provider '$provider' -CliName '$cli'"))
+    $script:loginItems[$cli] = $sub
+    [void]$miLogin.DropDownItems.Add($sub)
+}
+[void]$script:ctxStrip.Items.Add($miLogin)
+Sync-ProviderLoginMenuItems
+$script:ctxStrip.add_Opening({ Sync-ProviderLoginMenuItems })
 
 # View mode: pinned panel vs Quake-style drop-down on a global hotkey
 $script:viewModeItems = @{}
