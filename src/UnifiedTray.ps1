@@ -44,7 +44,7 @@ function Wire-UnifiedWindowEvents {
         Show-ContextMenuAtWpfPointer $e
     })
 
-    foreach ($pair in @(@('claudeHeader','claude'), @('codexHeader','codex'), @('cursorHeader','cursor'))) {
+    foreach ($pair in @(@('claudeHeader','claude'), @('codexHeader','codex'), @('cursorHeader','cursor'), @('grokHeader','grok'))) {
         $headerName = $pair[0]
         $sectionKey = $pair[1]
         $header = $script:window.FindName($headerName)
@@ -233,7 +233,7 @@ function Get-SectionExpanded([string]$key) {
 }
 
 function Sync-SectionMenuItems {
-    foreach ($key in @('claude','codex','cursor')) {
+    foreach ($key in $script:UnifiedSectionKeys) {
         if ($script:sectionItems.ContainsKey($key)) {
             $script:sectionItems[$key].Checked = Get-SectionVisible $key
         }
@@ -705,7 +705,7 @@ Sync-UpdateMenuItems
 Add-Separator
 
 # Sections
-foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex'), @('Show/Hide Cursor','cursor'))) {
+foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex'), @('Show/Hide Cursor','cursor'), @('Show/Hide Grok','grok'))) {
     $label = $pair[0]
     $key = $pair[1]
     $item = New-StripItem $label ([scriptblock]::Create("`$visible = -not (Get-SectionVisible '$key'); Set-SectionVisible '$key' `$visible; `$script:Cfg.Sections['$key'] = `$visible; Save-UnifiedState; Sync-SectionMenuItems"))
@@ -886,6 +886,10 @@ Add-Separator
 # Tray icon - left-click toggles the unified window
 # ---------------------------------------------------------------------------
 function New-TrayIcon {
+    $icoPath = Join-Path $script:AppDir 'assets\ai-usage-overlay.ico'
+    if (Test-Path -LiteralPath $icoPath) {
+        try { return New-Object System.Drawing.Icon($icoPath) } catch { }
+    }
     $bmp = New-Object System.Drawing.Bitmap 32, 32
     $g   = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode     = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias

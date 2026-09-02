@@ -7,6 +7,7 @@ BeforeAll {
     . (Join-Path $script:root 'src\Pricing.ps1')
     . (Join-Path $script:root 'src\CodexData.ps1')
     . (Join-Path $script:root 'src\CursorData.ps1')
+    . (Join-Path $script:root 'src\GrokData.ps1')
 }
 
 # Every provider must expose the SAME status/message contract. Codex silently
@@ -18,9 +19,15 @@ Describe 'Provider auth-state contract' {
         Get-Variable -Name CodexErrMsg -Scope Script -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
     }
 
+    It 'Grok exposes an auth state and error message like Codex does' {
+        $script:GrokAuthState | Should -Not -BeNullOrEmpty
+        Get-Variable -Name GrokErrMsg -Scope Script -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+    }
+
     It 'Codex and Cursor initialise their auth state identically' {
         $script:CodexAuthState | Should -Be 'init'
         $script:AuthState      | Should -Be 'init'
+        $script:GrokAuthState  | Should -Be 'init'
     }
 
     It 'shares one definition of what counts as an auth failure' {
@@ -90,7 +97,7 @@ Describe 'Snapshot alignment' {
     It 'exposes a message field for every provider' {
         # Scope each assertion to that provider's own [ordered]@{ ... } literal so
         # a missing field cannot be masked by the next provider's block.
-        foreach ($p in 'claude', 'codex', 'cursor') {
+        foreach ($p in 'claude', 'codex', 'cursor', 'grok') {
             $m = [regex]::Match($script:block, "providers\.$p\s*=\s*\[ordered\]@\{(.+?)\r?\n\s{8}\}", 'Singleline')
             $m.Success | Should -BeTrue -Because "the $p snapshot block must be parseable"
             $m.Groups[1].Value | Should -Match 'message\s*=' -Because "$p must report WHY it is unhealthy, not just that it is"

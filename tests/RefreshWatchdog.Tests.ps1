@@ -31,6 +31,7 @@ Describe 'Refresh job watchdog' {
         $script:ClaudeUsageScript = {}
         $script:ClaudeStatsScript = {}
         $script:CodexStatsScript = {}
+        $script:GrokUsageScript = {}
         $script:AppDir = 'C:\overlay'
         $script:CredPath = 'C:\overlay\credentials.json'
         $script:ErrLog = 'C:\overlay\errors.log'
@@ -58,7 +59,7 @@ Describe 'Refresh job watchdog' {
 
         Assert-MockCalled Stop-Job -Times 1 -Exactly
         Assert-MockCalled Remove-Job -Times 1 -Exactly
-        Assert-MockCalled Start-OverlayBackgroundJob -Times 3 -Exactly
+        Assert-MockCalled Start-OverlayBackgroundJob -Times 4 -Exactly
         Assert-MockCalled Write-Log -Times 1 -Exactly -ParameterFilter {
             $Message -match 'hung > 60 seconds; reaping and restarting\.'
         }
@@ -75,7 +76,7 @@ Describe 'Refresh job watchdog' {
 
         Assert-MockCalled Stop-Job -Times 0 -Exactly
         Assert-MockCalled Remove-Job -Times 0 -Exactly
-        Assert-MockCalled Start-OverlayBackgroundJob -Times 2 -Exactly
+        Assert-MockCalled Start-OverlayBackgroundJob -Times 3 -Exactly
         $script:pollJobs['ClaudeUsage'].Id | Should -Be 0
     }
 }

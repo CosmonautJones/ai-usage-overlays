@@ -12,7 +12,7 @@ $script:CritPct        = 95
 $script:WorkdayStartHour = 8
 $script:WorkdayEndHour   = 18
 $script:AppVersion     = '0.3.1'
-$script:RepoOwner      = 'tjones-gss'
+$script:RepoOwner      = 'CosmonautJones'
 $script:RepoName       = 'ai-usage-overlays'
 $script:UpdateChannel  = 'release'
 
@@ -212,7 +212,7 @@ try { $v = (& claude --version) 2>$null; if ($v -match '(\d+\.\d+\.\d+)') { $scr
 # ---------------------------------------------------------------------------
 $script:Themes = [ordered]@{
     'Deep Space' = @{
-        BgC1 = '#0F172A'; BgC2 = '#080C18'; BorderC1 = '#1E3A5F'; GssLabelFg = '#5C8AAA'
+        BgC1 = '#0F172A'; BgC2 = '#080C18'; BorderC1 = '#1E3A5F'; BrandLabelFg = '#5C8AAA'
         FivehColors = '#0369A1','#38BDF8'
         WeekColors  = '#C2410C','#FB923C'
         FabColors   = '#6D28D9','#C084FC'
@@ -223,8 +223,8 @@ $script:Themes = [ordered]@{
         OpusFg      = '#FDE047'
         Stripe      = '#38BDF8','#818CF8','#E879F9','#FB923C'
     }
-    'Global Shop' = @{
-        BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'; GssLabelFg = '#3DC95A'
+    'TravOS' = @{
+        BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'; BrandLabelFg = '#3DC95A'
         FivehColors = '#1A5C2A','#2D9F48'
         WeekColors  = '#1A5C2A','#4AE068'
         FabColors   = '#166534','#86EFAC'
@@ -236,7 +236,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
     }
     'Ocean' = @{
-        BgC1 = '#0F1F2E'; BgC2 = '#091420'; BorderC1 = '#1A4060'; GssLabelFg = '#5C8AAA'
+        BgC1 = '#0F1F2E'; BgC2 = '#091420'; BorderC1 = '#1A4060'; BrandLabelFg = '#5C8AAA'
         FivehColors = '#0F766E','#2DD4BF'
         WeekColors  = '#9D174D','#FB7185'
         FabColors   = '#1E40AF','#93C5FD'
@@ -248,7 +248,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#2DD4BF','#93C5FD','#FB7185','#FCD34D'
     }
     'Mono' = @{
-        BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'; GssLabelFg = '#909090'
+        BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'; BrandLabelFg = '#909090'
         FivehColors = '#1E3A5F','#94A3B8'
         WeekColors  = '#1E3A5F','#94A3B8'
         FabColors   = '#1E3A5F','#94A3B8'
@@ -260,7 +260,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#334155','#64748B','#94A3B8','#64748B'
     }
     'Black & White' = @{
-        BgC1 = '#0A0A0A'; BgC2 = '#000000'; BorderC1 = '#2A2A2A'; GssLabelFg = '#B0B0B0'
+        BgC1 = '#0A0A0A'; BgC2 = '#000000'; BorderC1 = '#2A2A2A'; BrandLabelFg = '#B0B0B0'
         FivehColors = '#3A3A3A','#E8E8E8'
         WeekColors  = '#3A3A3A','#E8E8E8'
         FabColors   = '#3A3A3A','#E8E8E8'
@@ -272,7 +272,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#E8E8E8','#B0B0B0','#7A7A7A','#4A4A4A'
     }
     'Catppuccin' = @{
-        BgC1 = '#1E1E2E'; BgC2 = '#11111B'; BorderC1 = '#313244'; GssLabelFg = '#9399B2'
+        BgC1 = '#1E1E2E'; BgC2 = '#11111B'; BorderC1 = '#313244'; BrandLabelFg = '#9399B2'
         FivehColors = '#313E5F','#89B4FA'
         WeekColors  = '#6E4A2E','#FAB387'
         FabColors   = '#4B3A6B','#CBA6F7'
@@ -284,7 +284,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#89B4FA','#CBA6F7','#F5C2E7','#FAB387'
     }
     'Synthwave' = @{
-        BgC1 = '#241B2F'; BgC2 = '#0D0221'; BorderC1 = '#472066'; GssLabelFg = '#B383E0'
+        BgC1 = '#241B2F'; BgC2 = '#0D0221'; BorderC1 = '#472066'; BrandLabelFg = '#B383E0'
         FivehColors = '#0E4F5C','#05D9E8'
         WeekColors  = '#7A0F52','#FF6AC1'
         FabColors   = '#4B1F8C','#B388FF'
@@ -296,7 +296,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#05D9E8','#B388FF','#FF6AC1','#FE53BB'
     }
     'Nord' = @{
-        BgC1 = '#2E3440'; BgC2 = '#242933'; BorderC1 = '#434C5E'; GssLabelFg = '#7B88A1'
+        BgC1 = '#2E3440'; BgC2 = '#242933'; BorderC1 = '#434C5E'; BrandLabelFg = '#7B88A1'
         FivehColors = '#3B4A5A','#88C0D0'
         WeekColors  = '#6E4636','#D08770'
         FabColors   = '#4C4257','#B48EAD'
@@ -308,7 +308,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#8FBCBB','#88C0D0','#81A1C1','#5E81AC'
     }
     'Dracula' = @{
-        BgC1 = '#282A36'; BgC2 = '#1A1B23'; BorderC1 = '#44475A'; GssLabelFg = '#6272A4'
+        BgC1 = '#282A36'; BgC2 = '#1A1B23'; BorderC1 = '#44475A'; BrandLabelFg = '#6272A4'
         FivehColors = '#1F5560','#8BE9FD'
         WeekColors  = '#7A2F5C','#FF79C6'
         FabColors   = '#4B3B7A','#BD93F9'
@@ -320,7 +320,7 @@ $script:Themes = [ordered]@{
         Stripe      = '#8BE9FD','#BD93F9','#FF79C6','#50FA7B'
     }
     'Rose Sunset' = @{
-        BgC1 = '#2A2436'; BgC2 = '#1C1622'; BorderC1 = '#504357'; GssLabelFg = '#C08497'
+        BgC1 = '#2A2436'; BgC2 = '#1C1622'; BorderC1 = '#504357'; BrandLabelFg = '#C08497'
         FivehColors = '#7A3A32','#FF9E80'
         WeekColors  = '#7A5A1E','#F6C177'
         FabColors   = '#7A2F52','#EB6F92'
@@ -338,7 +338,7 @@ $script:Themes = [ordered]@{
 # from that theme's Claude/Codex hues for variety.
 $script:CursorPalette = [ordered]@{
     'Deep Space'    = @('#4338CA','#818CF8')
-    'Global Shop'   = @('#3F6212','#A3E635')
+    'TravOS'         = @('#3F6212','#A3E635')
     'Ocean'         = @('#0E7490','#22D3EE')
     'Mono'          = @('#475569','#94A3B8')
     'Black & White' = @('#6B7280','#E5E7EB')
@@ -355,6 +355,28 @@ foreach ($k in $script:CursorPalette.Keys) {
     }
 }
 $script:CursorColorsCur = @('#065F46','#34D399')
+
+# Grok bar color per theme. Distinct from Claude/Codex/Cursor hues.
+$script:GrokPalette = [ordered]@{
+    'Deep Space'    = @('#A16207','#FDE68A')
+    'TravOS'        = @('#3F6212','#BEF264')
+    'Ocean'         = @('#B45309','#FCD34D')
+    'Mono'          = @('#57534E','#D6D3D1')
+    'Black & White' = @('#737373','#F5F5F5')
+    'Catppuccin'    = @('#DF8E1D','#F9E2AF')
+    'Synthwave'     = @('#F59E0B','#FDE047')
+    'Nord'          = @('#EBCB8B','#ECEFF4')
+    'Dracula'       = @('#F1FA8C','#F8F8F2')
+    'Rose Sunset'   = @('#F6C177','#FEF3C7')
+}
+foreach ($k in $script:GrokPalette.Keys) {
+    if ($script:Themes.Contains($k)) {
+        $script:Themes[$k].GrokColors = $script:GrokPalette[$k]
+        $script:Themes[$k].GrokFg     = $script:GrokPalette[$k][1]
+    }
+}
+$script:GrokColorsCur = @('#A16207','#FDE68A')
+
 
 # ---------------------------------------------------------------------------
 # Default config

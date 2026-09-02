@@ -14,6 +14,7 @@ Describe 'Unified overlay CLI snapshot mode' {
         $script:UnifiedOverlaySource | Should -Match '\[switch\]\$ClaudeOnly'
         $script:UnifiedOverlaySource | Should -Match '\[switch\]\$CodexOnly'
         $script:UnifiedOverlaySource | Should -Match '\[switch\]\$CursorOnly'
+        $script:UnifiedOverlaySource | Should -Match '\[switch\]\$GrokOnly'
         $script:UnifiedOverlaySource | Should -Match '\[int\]\$TimeoutSec'
         $script:UnifiedOverlaySource | Should -Match '\[int\]\$ClaudeTimeoutSec'
         $script:UnifiedOverlaySource | Should -Match '\[int\]\$CursorTimeoutSec'
@@ -25,6 +26,7 @@ Describe 'Unified overlay CLI snapshot mode' {
         $script:UnifiedOverlaySource | Should -Match 'claude = New-SkippedProviderSnapshot'
         $script:UnifiedOverlaySource | Should -Match 'codex\s+= New-SkippedProviderSnapshot'
         $script:UnifiedOverlaySource | Should -Match 'cursor = New-SkippedProviderSnapshot'
+        $script:UnifiedOverlaySource | Should -Match 'grok\s+= New-SkippedProviderSnapshot'
     }
 
     It 'filters providers before invoking provider data fetchers' {
