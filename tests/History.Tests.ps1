@@ -95,3 +95,86 @@ Describe 'Get-Eta' {
         Get-Eta $samples 'five_hour' | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Add-HistorySample provider extras' {
+    BeforeEach {
+        $script:History = [System.Collections.Generic.List[object]]::new()
+        $script:HistoryMaxLen = 480
+        $script:CodexStats = $null
+        $script:GrokUsage = $null
+        $script:LiveData = $null
+        $script:HistoryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('hist-' + [guid]::NewGuid().ToString('N') + '.json')
+    }
+    AfterEach {
+        Remove-Item -LiteralPath $script:HistoryPath -Force -ErrorAction SilentlyContinue
+    }
+    It 'writes extra keys as $null and never invents 0 from a missing provider' {
+        $data = [PSCustomObject]@{
+            five_hour = [PSCustomObject]@{ utilization = 50.0 }
+            seven_day = [PSCustomObject]@{ utilization = 30.0 }
+        }
+        Add-HistorySample $data
+        $s = $script:History[0]
+        $s.codex_five_hour | Should -BeNullOrEmpty
+        $s.codex_seven_day | Should -BeNullOrEmpty
+        $s.grok_seven_day | Should -BeNullOrEmpty
+        $s.cursor_requests | Should -BeNullOrEmpty
+        $s.five_hour | Should -Be 50.0
+    }
+    It 'records live extras as numbers without coercing missing to 0' {
+        $script:CodexStats = [pscustomobject]@{ FiveHourPct = 33; WeekPct = 100 }
+        $script:GrokUsage = [pscustomobject]@{ WeekPct = 25 }
+        $script:LiveData = [pscustomobject]@{ 'gpt-4' = [pscustomobject]@{ numRequests = 10; maxRequestUsage = 50 } }
+        Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
+        Sync-HistoryProviderMetrics
+        $s = $script:History[0]
+        $s.codex_five_hour | Should -Be 33
+        $s.codex_seven_day | Should -Be 100
+        $s.grok_seven_day | Should -Be 25
+        $s.cursor_requests | Should -Be 20
+    }
+    It 'leaves cursor_requests null when maxRequestUsage is 0' {
+        $script:LiveData = [pscustomobject]@{ 'gpt-4' = [pscustomobject]@{ numRequests = 0; maxRequestUsage = 0 } }
+        Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
+        Sync-HistoryProviderMetrics
+        $script:History[0].cursor_requests | Should -BeNullOrEmpty
+    }
+    It 'leaves Codex 5-hour null when FiveHourPct is missing' {
+        $script:CodexStats = [pscustomobject]@{ WeekPct = 80 }
+        Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
+        Sync-HistoryProviderMetrics
+        $script:History[0].codex_five_hour | Should -BeNullOrEmpty
+        $script:History[0].codex_seven_day | Should -Be 80
+    }
+}
+
+Describe 'Codex 5-hour HUD hide' {
+    It 'Update-CodexSection hides the 5-HOUR row when FiveHourPct is null' {
+        $root = Split-Path $PSScriptRoot -Parent
+        $shell = Get-Content (Join-Path $root 'src\Shell.ps1') -Raw -Encoding UTF8
+        $shell | Should -Match 'x:Name="codexFivehRow"'
+        $shell | Should -Match 'x:Name="codexFivehRowC"'
+        $fn = [regex]::Match($shell, '(?s)function Update-CodexSection \{.*?\nfunction Update-GrokSection').Value
+        $fn | Should -Match 'FiveHourPct'
+        $fn | Should -Match 'codexFivehRow'
+        $fn | Should -Match 'Collapsed'
+    }
+}
+
+Describe 'Spark rows under each real bar' {
+    It 'clones 14px polylines for Codex Grok and Cursor in full and compact' {
+        $root = Split-Path $PSScriptRoot -Parent
+        $shell = Get-Content (Join-Path $root 'src\Shell.ps1') -Raw -Encoding UTF8
+        $state = Get-Content (Join-Path $root 'src\UnifiedState.ps1') -Raw -Encoding UTF8
+        $overlay = Get-Content (Join-Path $root 'unified-overlay.ps1') -Raw -Encoding UTF8
+        $shell | Should -Match 'codexWeekSparkRow'
+        $shell | Should -Match 'codexWeekSparkRowC'
+        $shell | Should -Match 'grokWeekSparkRow'
+        $shell | Should -Match 'cursorReqSparkRow'
+        $shell | Should -Match 'Set-Spark .*codex_seven_day'
+        $shell | Should -Match 'Set-Spark .*grok_seven_day'
+        $shell | Should -Match 'Set-Spark .*cursor_requests'
+        $state | Should -Match 'SparkRowNames'
+        $overlay | Should -Match 'Sync-HistoryProviderMetrics'
+    }
+}

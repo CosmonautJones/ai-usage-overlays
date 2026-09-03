@@ -739,6 +739,9 @@ function Complete-RefreshJobs {
                 }
 
                 if ($applied) {
+                    if (Get-Command Sync-HistoryProviderMetrics -ErrorAction SilentlyContinue) {
+                        Sync-HistoryProviderMetrics
+                    }
                     Update-AllSections
                     Resize-ToContent
                 }

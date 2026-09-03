@@ -17,6 +17,51 @@ function Get-ClaudeHistoryQuotaFields {
     )
 }
 
+function Get-HistoryProviderMetricKeys {
+    @(
+        'codex_five_hour'
+        'codex_seven_day'
+        'grok_seven_day'
+        'cursor_requests'
+    )
+}
+
+function ConvertTo-HistoryMetric($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [string] -and [string]::IsNullOrWhiteSpace($value)) { return $null }
+    try {
+        $d = [double]$value
+        if ([double]::IsNaN($d) -or [double]::IsInfinity($d)) { return $null }
+        return $d
+    } catch {
+        return $null
+    }
+}
+
+function Get-HistoryCursorRequestPct {
+    $d = $script:LiveData
+    if (-not $d -or -not $d.'gpt-4') { return $null }
+    $limit = $d.'gpt-4'.maxRequestUsage
+    if ($null -eq $limit) { return $null }
+    try {
+        $lim = [double]$limit
+        if ($lim -le 0) { return $null }
+        $used = [double]$d.'gpt-4'.numRequests
+        return [math]::Min(100.0, ($used / $lim) * 100.0)
+    } catch {
+        return $null
+    }
+}
+
+function Set-HistorySampleProperty {
+    param($Sample, [string]$Name, $Value)
+    if ($Sample.PSObject.Properties[$Name]) {
+        $Sample.$Name = $Value
+    } else {
+        $Sample | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+    }
+}
+
 function Load-History {
     try {
         if (-not (Test-Path $script:HistoryPath)) { return }
@@ -40,12 +85,31 @@ function Add-HistorySample([object]$data) {
         $window = if ($data) { $data.PSObject.Properties[$field].Value } else { $null }
         $sampleData[$field] = if ($window) { [double]$window.utilization } else { $null }
     }
+    foreach ($field in Get-HistoryProviderMetricKeys) {
+        $sampleData[$field] = $null
+    }
     $sample = [PSCustomObject]$sampleData
     $script:History.Add($sample)
-    # Trim to ring buffer max
     while ($script:History.Count -gt $script:HistoryMaxLen) {
         $script:History.RemoveAt(0)
     }
+}
+
+function Sync-HistoryProviderMetrics {
+    if (-not $script:History -or $script:History.Count -eq 0) { return }
+
+    $last = $script:History[$script:History.Count - 1]
+    $codex = $script:CodexStats
+    $five = if ($codex) { ConvertTo-HistoryMetric $codex.FiveHourPct } else { $null }
+    $week = if ($codex) { ConvertTo-HistoryMetric $codex.WeekPct } else { $null }
+    $grok = if ($script:GrokUsage) { ConvertTo-HistoryMetric $script:GrokUsage.WeekPct } else { $null }
+    $cur  = Get-HistoryCursorRequestPct
+
+    Set-HistorySampleProperty $last 'codex_five_hour' $five
+    Set-HistorySampleProperty $last 'codex_seven_day' $week
+    Set-HistorySampleProperty $last 'grok_seven_day' $grok
+    Set-HistorySampleProperty $last 'cursor_requests' $cur
+    Save-History
 }
 
 function Save-History {

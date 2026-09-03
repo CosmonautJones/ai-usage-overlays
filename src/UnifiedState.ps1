@@ -170,9 +170,18 @@ function Apply-UnifiedSettings {
             $statsPanel.Visibility = if ($script:Cfg.ShowStats) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
         }
 
-        $sparkRow = $script:window.FindName('sparkRow')
-        if ($sparkRow) {
-            $sparkRow.Visibility = if ($script:Cfg.ShowGraph) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        if (-not $script:SparkRowNames) {
+            $script:SparkRowNames = @(
+                'fivehSparkRow','weekSparkRow','fivehSparkRowC','weekSparkRowC',
+                'codexFivehSparkRow','codexWeekSparkRow','codexFivehSparkRowC','codexWeekSparkRowC',
+                'grokWeekSparkRow','grokWeekSparkRowC',
+                'cursorReqSparkRow','cursorReqSparkRowC'
+            )
+        }
+        $sparkVis = if ($script:Cfg.ShowGraph) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        foreach ($name in $script:SparkRowNames) {
+            $row = $script:window.FindName($name)
+            if ($row -and -not $script:Cfg.ShowGraph) { $row.Visibility = $sparkVis }
         }
 
         # Compact mode: swap each section's Full body for its single-line Compact body.
