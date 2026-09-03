@@ -39,13 +39,85 @@ function Resolve-GrokAuthPath {
     return (Join-Path $env:USERPROFILE '.grok\auth.json')
 }
 
+function Get-GrokNoteValue {
+    param($Obj, [string]$Name)
+
+    if (-not $Obj -or -not $Name) { return $null }
+
+    if ($Obj -is [System.Collections.IDictionary]) {
+        if ($Obj.Contains($Name)) { return $Obj[$Name] }
+        return $null
+    }
+
+    if ($Obj.PSObject -and $Obj.PSObject.Properties[$Name]) {
+        return $Obj.PSObject.Properties[$Name].Value
+    }
+
+    return $null
+}
+
+function Test-GrokAuthEntryExpired {
+    param($Entry)
+
+    $raw = Get-GrokNoteValue $Entry 'expires_at'
+    if (-not $raw) { return $false }
+
+    try {
+        $exp = [datetimeoffset]::Parse([string]$raw)
+        return ($exp -le [datetimeoffset]::Now)
+    } catch {
+        return $false
+    }
+}
+
+function Get-GrokTokenFromEntry {
+    param($Entry)
+
+    if (-not $Entry) { return $null }
+    if (Test-GrokAuthEntryExpired $Entry) { return $null }
+
+    foreach ($name in @('key', 'access_token')) {
+        $val = Get-GrokNoteValue $Entry $name
+        if ($val -is [string] -and $val) { return $val }
+    }
+
+    $tokens = Get-GrokNoteValue $Entry 'tokens'
+    $nested = Get-GrokNoteValue $tokens 'access_token'
+    if ($nested -is [string] -and $nested) { return $nested }
+
+    return $null
+}
+
 function Get-GrokAccessToken {
     param($Auth)
 
     if (-not $Auth) { return $null }
-    if ($Auth.tokens -and $Auth.tokens.access_token) { return [string]$Auth.tokens.access_token }
-    if ($Auth.access_token) { return [string]$Auth.access_token }
-    return $null
+
+    $preferred = [System.Collections.Generic.List[object]]::new()
+    $fallback  = [System.Collections.Generic.List[object]]::new()
+
+    if ($Auth.PSObject) {
+        foreach ($prop in $Auth.PSObject.Properties) {
+            $val = $prop.Value
+            if ($null -eq $val -or $val -is [string] -or $val -is [ValueType]) { continue }
+            if ($prop.Name -like 'https://auth.x.ai::*') {
+                [void]$preferred.Add($val)
+            } else {
+                [void]$fallback.Add($val)
+            }
+        }
+    }
+
+    foreach ($entry in $preferred) {
+        $token = Get-GrokTokenFromEntry $entry
+        if ($token) { return $token }
+    }
+    foreach ($entry in $fallback) {
+        $token = Get-GrokTokenFromEntry $entry
+        if ($token) { return $token }
+    }
+
+    return Get-GrokTokenFromEntry $Auth
 }
 
 function Convert-GrokPeriodEnd {

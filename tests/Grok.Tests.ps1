@@ -45,6 +45,57 @@ Describe 'ConvertFrom-GrokBillingResponse' {
     }
 }
 
+Describe 'Get-GrokAccessToken' {
+    It 'reads a nested OIDC key from an auth.x.ai slot' {
+        $auth = [pscustomobject]@{
+            'https://auth.x.ai::test-client' = [pscustomobject]@{
+                key = 'oidc-key-value'
+                auth_mode = 'oidc'
+                expires_at = ([datetimeoffset]::Now.AddHours(6)).ToString('o')
+            }
+        }
+        Get-GrokAccessToken $auth | Should -Be 'oidc-key-value'
+    }
+
+    It 'prefers the auth.x.ai slot over another nested key' {
+        $auth = [pscustomobject]@{
+            other = [pscustomobject]@{ key = 'other-key' }
+            'https://auth.x.ai::test-client' = [pscustomobject]@{ key = 'xai-key' }
+        }
+        Get-GrokAccessToken $auth | Should -Be 'xai-key'
+    }
+
+    It 'skips an expired auth.x.ai slot and uses another key' {
+        $auth = [pscustomobject]@{
+            'https://auth.x.ai::test-client' = [pscustomobject]@{
+                key = 'expired-key'
+                expires_at = ([datetimeoffset]::Now.AddHours(-1)).ToString('o')
+            }
+            other = [pscustomobject]@{ key = 'fresh-key' }
+        }
+        Get-GrokAccessToken $auth | Should -Be 'fresh-key'
+    }
+
+    It 'returns null when the only slot is expired' {
+        $auth = [pscustomobject]@{
+            'https://auth.x.ai::test-client' = [pscustomobject]@{
+                key = 'expired-key'
+                expires_at = ([datetimeoffset]::Now.AddHours(-1)).ToString('o')
+            }
+        }
+        Get-GrokAccessToken $auth | Should -BeNullOrEmpty
+    }
+
+    It 'still accepts tokens.access_token' {
+        $auth = [pscustomobject]@{ tokens = [pscustomobject]@{ access_token = 'a.b.c' } }
+        Get-GrokAccessToken $auth | Should -Be 'a.b.c'
+    }
+
+    It 'still accepts a top-level access_token' {
+        Get-GrokAccessToken ([pscustomobject]@{ access_token = 'a.b.c' }) | Should -Be 'a.b.c'
+    }
+}
+
 Describe 'Get-GrokLiveUsage auth reporting' {
     BeforeEach {
         $script:GrokAuthState = 'init'
@@ -70,6 +121,17 @@ Describe 'Get-GrokLiveUsage auth reporting' {
         '{"tokens":{}}' | Set-Content -LiteralPath $p
         Get-GrokLiveUsage -AuthPath $p | Should -BeNullOrEmpty
         $script:GrokAuthState | Should -Be 'notoken'
+    }
+
+    It 'treats a nested OIDC key as a present token' {
+        $p = Join-Path $script:sandbox 'auth.json'
+        $exp = ([datetimeoffset]::Now.AddHours(6)).ToString('o')
+        @{ 'https://auth.x.ai::test-client' = @{ key = 'oidc-key-value'; expires_at = $exp } } |
+            ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $p
+        Mock Invoke-RestMethod { throw [System.Net.WebException]::new('Response status code does not indicate success: 401 (Unauthorized).') }
+        Get-GrokLiveUsage -AuthPath $p | Should -BeNullOrEmpty
+        $script:GrokAuthState | Should -Be 'auth'
+        $script:GrokErrMsg | Should -Not -Match 'oidc-key-value'
     }
 
     It 'accepts a top-level access_token' {
