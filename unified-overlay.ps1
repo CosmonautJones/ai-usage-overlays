@@ -1,6 +1,6 @@
 <#
     Unified AI Usage Overlay
-    A single always-on-top HUD showing Claude Code, Codex, and Cursor usage.
+    A single always-on-top HUD showing Claude Code, Codex, Cursor, and Grok usage.
     Right-click the panel for all options.
 
     Usage:
@@ -16,14 +16,16 @@ param(
     [switch]$Json,
     [switch]$Snapshot,
     [switch]$NoHud,
-    [ValidateSet('Claude', 'Codex', 'Cursor')]
-    [string[]]$Provider = @('Claude', 'Codex', 'Cursor'),
+    [ValidateSet('Claude', 'Codex', 'Cursor', 'Grok')]
+    [string[]]$Provider = @('Claude', 'Codex', 'Cursor', 'Grok'),
     [switch]$ClaudeOnly,
     [switch]$CodexOnly,
     [switch]$CursorOnly,
+    [switch]$GrokOnly,
     [int]$TimeoutSec = 20,
     [int]$ClaudeTimeoutSec = 0,
     [int]$CursorTimeoutSec = 0,
+    [int]$GrokTimeoutSec = 0,
     [switch]$Background   # set on self-relaunch to break infinite-loop
 )
 
@@ -139,19 +141,22 @@ function Resolve-SnapshotProviders {
         [string[]]$Provider,
         [switch]$ClaudeOnly,
         [switch]$CodexOnly,
-        [switch]$CursorOnly
+        [switch]$CursorOnly,
+        [switch]$GrokOnly
     )
 
     $selected = [ordered]@{
         claude = $false
         codex  = $false
         cursor = $false
+        grok   = $false
     }
 
-    if ($ClaudeOnly -or $CodexOnly -or $CursorOnly) {
+    if ($ClaudeOnly -or $CodexOnly -or $CursorOnly -or $GrokOnly) {
         if ($ClaudeOnly) { $selected.claude = $true }
         if ($CodexOnly)  { $selected.codex  = $true }
         if ($CursorOnly) { $selected.cursor = $true }
+        if ($GrokOnly)   { $selected.grok   = $true }
         return $selected
     }
 
@@ -160,6 +165,7 @@ function Resolve-SnapshotProviders {
             '^Claude$' { $selected.claude = $true; break }
             '^Codex$'  { $selected.codex  = $true; break }
             '^Cursor$' { $selected.cursor = $true; break }
+            '^Grok$'   { $selected.grok   = $true; break }
         }
     }
 
@@ -183,9 +189,11 @@ function Invoke-OverlaySnapshot {
         [switch]$ClaudeOnly,
         [switch]$CodexOnly,
         [switch]$CursorOnly,
+        [switch]$GrokOnly,
         [int]$TimeoutSec = 20,
         [int]$ClaudeTimeoutSec = 0,
-        [int]$CursorTimeoutSec = 0
+        [int]$CursorTimeoutSec = 0,
+        [int]$GrokTimeoutSec = 0
     )
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -198,6 +206,7 @@ function Invoke-OverlaySnapshot {
     . (Join-Path $script:AppDir 'src\State.ps1')
     . (Join-Path $script:AppDir 'src\CodexData.ps1')
     . (Join-Path $script:AppDir 'src\CursorData.ps1')
+    . (Join-Path $script:AppDir 'src\GrokData.ps1')
     . (Join-Path $script:AppDir 'src\Update.ps1')
 
     $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
@@ -211,11 +220,15 @@ function Invoke-OverlaySnapshot {
     $script:AuthState = 'init'
     $script:CursorErrMsg = ''
     $script:CursorLastFetch = ''
+    $script:GrokAuthState = 'init'
+    $script:GrokErrMsg = ''
+    $script:GrokUsage = $null
 
-    $selectedProviders = Resolve-SnapshotProviders -Provider $Provider -ClaudeOnly:$ClaudeOnly -CodexOnly:$CodexOnly -CursorOnly:$CursorOnly
+    $selectedProviders = Resolve-SnapshotProviders -Provider $Provider -ClaudeOnly:$ClaudeOnly -CodexOnly:$CodexOnly -CursorOnly:$CursorOnly -GrokOnly:$GrokOnly
     $defaultTimeout = Limit-SnapshotTimeoutSec -Value $TimeoutSec
     $claudeTimeout = Limit-SnapshotTimeoutSec -Value $ClaudeTimeoutSec -Default $defaultTimeout
     $cursorTimeout = Limit-SnapshotTimeoutSec -Value $CursorTimeoutSec -Default $defaultTimeout
+    $grokTimeout = Limit-SnapshotTimeoutSec -Value $GrokTimeoutSec -Default $defaultTimeout
 
     Load-History
     $claudeError = $null
@@ -223,6 +236,7 @@ function Invoke-OverlaySnapshot {
     $codexError = $null
     $cursorUsageError = $null
     $cursorStatsError = $null
+    $grokError = $null
 
     if ($selectedProviders['claude']) {
         $claudeError = Invoke-SafeSnapshotStep 'Claude usage' { Get-Usage -TimeoutSec $claudeTimeout -Force }
@@ -235,11 +249,19 @@ function Invoke-OverlaySnapshot {
         $cursorUsageError = Invoke-SafeSnapshotStep 'Cursor usage' { Get-CursorUsage -TimeoutSec $cursorTimeout }
         $cursorStatsError = Invoke-SafeSnapshotStep 'Cursor stats' { Get-CursorLocalStats -TimeoutSec $cursorTimeout }
     }
+    if ($selectedProviders['grok']) {
+        $grokError = Invoke-SafeSnapshotStep 'Grok usage' { [void](Get-GrokLiveUsage -TimeoutSec $grokTimeout) }
+    }
+
+    if (Get-Command Complete-UnifiedHistoryPoll -ErrorAction SilentlyContinue) {
+        Complete-UnifiedHistoryPoll
+    }
 
     $providers = [ordered]@{
         claude = New-SkippedProviderSnapshot
         codex  = New-SkippedProviderSnapshot
         cursor = New-SkippedProviderSnapshot
+        grok   = New-SkippedProviderSnapshot
     }
 
     if ($selectedProviders['claude']) {
@@ -294,6 +316,22 @@ function Invoke-OverlaySnapshot {
             error = $cursorError
         }
     }
+    if ($selectedProviders['grok']) {
+        $grokStatus =
+            if ($script:GrokAuthState -eq 'notoken') { 'unavailable' }
+            elseif (Test-ProviderAuthFailed $script:GrokAuthState) { $script:GrokAuthState }
+            elseif ($script:GrokUsage) { 'ok' }
+            elseif ($grokError) { 'error' }
+            else { $script:GrokAuthState }
+
+        $providers.grok = [ordered]@{
+            selected = $true
+            status = $grokStatus
+            message = $script:GrokErrMsg
+            usage = $script:GrokUsage
+            error = $grokError
+        }
+    }
 
     $snapshot = [ordered]@{
         schema = 'ai-usage.snapshot.v1'
@@ -304,6 +342,7 @@ function Invoke-OverlaySnapshot {
             timeoutSec = [ordered]@{
                 claude = $claudeTimeout
                 cursor = $cursorTimeout
+                grok   = $grokTimeout
             }
         }
         providers = $providers
@@ -322,7 +361,7 @@ if ($Install) {
 }
 
 if ($Json -or $Snapshot -or $NoHud) {
-    Invoke-OverlaySnapshot -Provider $Provider -ClaudeOnly:$ClaudeOnly -CodexOnly:$CodexOnly -CursorOnly:$CursorOnly -TimeoutSec $TimeoutSec -ClaudeTimeoutSec $ClaudeTimeoutSec -CursorTimeoutSec $CursorTimeoutSec
+    Invoke-OverlaySnapshot -Provider $Provider -ClaudeOnly:$ClaudeOnly -CodexOnly:$CodexOnly -CursorOnly:$CursorOnly -GrokOnly:$GrokOnly -TimeoutSec $TimeoutSec -ClaudeTimeoutSec $ClaudeTimeoutSec -CursorTimeoutSec $CursorTimeoutSec -GrokTimeoutSec $GrokTimeoutSec
     return
 }
 
@@ -354,6 +393,8 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\State.ps1')
 . (Join-Path $script:AppDir 'src\CodexData.ps1')
 . (Join-Path $script:AppDir 'src\CursorData.ps1')
+. (Join-Path $script:AppDir 'src\GrokData.ps1')
+. (Join-Path $script:AppDir 'src\ProviderLogin.ps1')
 . (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
@@ -372,7 +413,7 @@ $script:Positioned = $false
 $script:window = [System.Windows.Markup.XamlReader]::Parse($xaml)
 
 function Restore-UnifiedSections {
-    foreach ($key in @('claude', 'codex', 'cursor')) {
+    foreach ($key in $script:UnifiedSectionKeys) {
         if ($script:Cfg.Sections.ContainsKey($key)) {
             Set-Section $key ([bool]$script:Cfg.Sections[$key])
         }
@@ -474,6 +515,27 @@ $script:CodexStatsScript = {
     }
 }
 
+
+$script:GrokUsageScript = {
+    param([string]$AppDir, [string]$ErrLog, [int]$UsageTimeoutSec = 20)
+
+    $script:AppDir = $AppDir
+    $script:ErrLog = $ErrLog
+
+    . (Join-Path $AppDir 'src\Config.ps1')
+    . (Join-Path $AppDir 'src\GrokData.ps1')
+
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Get-GrokLiveUsage -TimeoutSec $UsageTimeoutSec
+
+    @{
+        Kind          = 'GrokUsage'
+        GrokUsage     = $script:GrokUsage
+        GrokAuthState = $script:GrokAuthState
+        GrokErrMsg    = $script:GrokErrMsg
+    }
+}
+
 $script:pollJobs = @{}
 $script:pollJobStartedAt = @{}
 $script:LastClaudeUsageSignature = $null
@@ -549,7 +611,8 @@ function Start-OverlayBackgroundJob {
 function Start-AllRefreshJobs {
     param(
         [int]$UsageTimeoutSec = 20,
-        [switch]$Force
+        [switch]$Force,
+        [string[]]$Kind
     )
 
     $jobs = @(
@@ -568,42 +631,52 @@ function Start-AllRefreshJobs {
             Script     = $script:CodexStatsScript
             Arguments  = @($script:AppDir, $script:ErrLog)
         }
+        @{
+            Kind       = 'GrokUsage'
+            Script     = $script:GrokUsageScript
+            Arguments  = @($script:AppDir, $script:ErrLog, $UsageTimeoutSec)
+        }
     )
 
-    foreach ($jobSpec in $jobs) {
-        $kind = $jobSpec.Kind
+    if ($Kind -and $Kind.Count -gt 0) {
+        $allow = @($Kind)
+        $jobs = @($jobs | Where-Object { $allow -contains $_.Kind })
+    }
 
-        if ($script:pollJobs.ContainsKey($kind)) {
-            $existing = $script:pollJobs[$kind]
+    foreach ($jobSpec in $jobs) {
+        $jobKind = $jobSpec.Kind
+
+        if ($script:pollJobs.ContainsKey($jobKind)) {
+            $existing = $script:pollJobs[$jobKind]
             if ($existing.State -eq 'Running' -or $existing.State -eq 'NotStarted') {
                 $ceilingSeconds = (2 * $UsageTimeoutSec + 20)
-                if (-not $script:pollJobStartedAt.ContainsKey($kind)) {
-                    $script:pollJobStartedAt[$kind] = Get-Date
-                    Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                if (-not $script:pollJobStartedAt.ContainsKey($jobKind)) {
+                    $script:pollJobStartedAt[$jobKind] = Get-Date
+                    Write-Log "Start-AllRefreshJobs: previous $jobKind refresh still running; skipping this source."
                     continue
                 }
 
-                $elapsedSeconds = ((Get-Date) - $script:pollJobStartedAt[$kind]).TotalSeconds
+                $elapsedSeconds = ((Get-Date) - $script:pollJobStartedAt[$jobKind]).TotalSeconds
                 if ($elapsedSeconds -gt $ceilingSeconds) {
-                    Write-Log "Start-AllRefreshJobs: previous $kind refresh hung > $ceilingSeconds seconds; reaping and restarting."
+                    Write-Log "Start-AllRefreshJobs: previous $jobKind refresh hung > $ceilingSeconds seconds; reaping and restarting."
                     Stop-Job $existing -ErrorAction SilentlyContinue
                     Remove-Job $existing -Force -ErrorAction SilentlyContinue
-                    $script:pollJobs.Remove($kind)
-                    $script:pollJobStartedAt.Remove($kind)
+                    $script:pollJobs.Remove($jobKind)
+                    $script:pollJobStartedAt.Remove($jobKind)
                 } else {
-                    Write-Log "Start-AllRefreshJobs: previous $kind refresh still running; skipping this source."
+                    Write-Log "Start-AllRefreshJobs: previous $jobKind refresh still running; skipping this source."
                     continue
                 }
             }
 
-            if ($script:pollJobs.ContainsKey($kind)) {
+            if ($script:pollJobs.ContainsKey($jobKind)) {
                 Remove-Job $existing -Force -ErrorAction SilentlyContinue
-                $script:pollJobs.Remove($kind)
+                $script:pollJobs.Remove($jobKind)
             }
         }
 
-        $script:pollJobs[$kind] = Start-OverlayBackgroundJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
-        $script:pollJobStartedAt[$kind] = Get-Date
+        $script:pollJobs[$jobKind] = Start-OverlayBackgroundJob -ScriptBlock $jobSpec.Script -ArgumentList $jobSpec.Arguments
+        $script:pollJobStartedAt[$jobKind] = Get-Date
     }
 }
 
@@ -646,8 +719,6 @@ function Complete-RefreshJobs {
                         $script:AuthState       = $r['AuthState']
                         $script:CursorErrMsg    = $r['CursorErrMsg']
                         $script:CursorLastFetch = $r['CursorLastFetch']
-                        $script:History         = [System.Collections.Generic.List[object]]::new()
-                        foreach ($sample in @($r['History'])) { [void]$script:History.Add($sample) }
                         Sync-ClaudePollTimerInterval $script:State
                     }
                     'ClaudeStats' {
@@ -657,6 +728,11 @@ function Complete-RefreshJobs {
                         $script:CodexStats = $r['CodexStats']
                         $script:CodexAuthState = $r['CodexAuthState']
                         $script:CodexErrMsg = $r['CodexErrMsg']
+                    }
+                    'GrokUsage' {
+                        $script:GrokUsage = $r['GrokUsage']
+                        $script:GrokAuthState = $r['GrokAuthState']
+                        $script:GrokErrMsg = $r['GrokErrMsg']
                     }
                     default {
                         Write-Log "Complete-RefreshJobs: unknown result kind '$resultKind'."
@@ -680,6 +756,14 @@ function Complete-RefreshJobs {
         }
     }
 
+    if ($completedAny -and (-not $script:pollJobs -or $script:pollJobs.Count -eq 0)) {
+        if (Get-Command Complete-UnifiedHistoryPoll -ErrorAction SilentlyContinue) {
+            Complete-UnifiedHistoryPoll
+        }
+        Update-AllSections
+        Resize-ToContent
+    }
+
     return $completedAny
 }
 
@@ -688,6 +772,7 @@ function Complete-RefreshJobs {
 # data load runs async and each section fills in as its refresh job returns.
 # ---------------------------------------------------------------------------
 Load-UnifiedState
+Load-History
 if ($script:UnifiedStateNeedsRepair) { Save-UnifiedState }
 if (Test-DropdownMode) { Initialize-DropdownPinnedPosition }
 Sync-ViewModeMenuItems   # menu was built from defaults before state was read
@@ -708,7 +793,7 @@ $script:pollTimer.add_Tick({ Start-AllRefreshJobs })
 # so, marshals their data onto the UI thread and renders immediately.
 $script:jobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $script:jobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
-$script:jobTimer.add_Tick({ [void](Complete-RefreshJobs) })
+$script:jobTimer.add_Tick({ [void](Complete-RefreshJobs); Complete-ProviderLoginWatchers })
 
 # Tick timer: refreshes reset countdowns/clock every 30s (render only, no I/O,
 # no layout Measure - Resize-ToContent is intentionally NOT in this path).

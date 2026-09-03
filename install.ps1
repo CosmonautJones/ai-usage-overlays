@@ -1,8 +1,8 @@
 # AI Usage Overlay - one-liner installer
-# Installs the unified Claude Code + Codex + Cursor usage overlay.
+# Installs the unified Claude Code + Codex + Cursor + Grok usage overlay.
 #
 # Run in PowerShell (or paste to your Claude / Cursor agent):
-#   irm https://raw.githubusercontent.com/tjones-gss/ai-usage-overlays/master/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/CosmonautJones/ai-usage-overlays/master/install.ps1 | iex
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -10,7 +10,7 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
     throw 'Windows PowerShell 5.1 or PowerShell 7+ is required.'
 }
 
-$repo    = 'https://github.com/tjones-gss/ai-usage-overlays/archive/refs/heads/master.zip'
+$repo    = 'https://github.com/CosmonautJones/ai-usage-overlays/archive/refs/heads/master.zip'
 $zip     = Join-Path $env:TEMP 'ai-usage-overlays.zip'
 $extract = Join-Path $env:TEMP 'ai-usage-overlays-extract'
 $src     = Join-Path $extract  'ai-usage-overlays-master'
@@ -36,6 +36,7 @@ Copy-Item "$src\Install.bat"         $dest -Force
 Copy-Item "$src\Uninstall.bat"       $dest -Force
 Copy-Item "$src\sqlite3.exe"         $dest -Force
 Copy-Item "$src\src\*"               (Join-Path $dest 'src') -Recurse -Force
+if (Test-Path "$src\assets") { Copy-Item "$src\assets" $dest -Recurse -Force }
 
 & $ps.Source -STA -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$dest\unified-overlay.ps1" -Install
 

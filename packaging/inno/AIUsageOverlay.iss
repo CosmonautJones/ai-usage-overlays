@@ -14,9 +14,9 @@ AppId={{C88512A1-AC3D-4D85-9B96-ACDFD9439AF3}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=AI Usage Overlay
-AppPublisherURL=https://github.com/tjones-gss/ai-usage-overlays
-AppSupportURL=https://github.com/tjones-gss/ai-usage-overlays/issues
-AppUpdatesURL=https://github.com/tjones-gss/ai-usage-overlays/releases
+AppPublisherURL=https://github.com/CosmonautJones/ai-usage-overlays
+AppSupportURL=https://github.com/CosmonautJones/ai-usage-overlays/issues
+AppUpdatesURL=https://github.com/CosmonautJones/ai-usage-overlays/releases
 DefaultDirName={localappdata}\AIUsageOverlay
 DefaultGroupName=AI Usage Overlay
 DisableDirPage=yes
@@ -44,6 +44,7 @@ Source: "{#RepoRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\docs\preview.png"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RepoRoot}\packaging\build\app-version.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#RepoRoot}\src\*.ps1"; DestDir: "{app}\src"; Flags: ignoreversion
+Source: "{#RepoRoot}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RepoRoot}\packaging\inno\installer-hooks.ps1"; DestDir: "{app}\packaging"; Flags: ignoreversion
 
 [Icons]

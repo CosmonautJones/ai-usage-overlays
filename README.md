@@ -1,6 +1,6 @@
 # AI Usage Overlay
 
-Always-on-top Windows HUD for Claude Code, Codex, and Cursor IDE usage in one tray app.
+Always-on-top Windows HUD for Claude Code, Codex, Cursor, and Grok IDE usage in one tray app.
 
 ![Unified overlay preview](docs/preview.png)
 
@@ -149,7 +149,7 @@ The fallback/manual install can still be removed by running `Uninstall.bat` from
 ## Features
 
 - **Always on top** - stays visible over other windows
-- **Unified providers** - Claude Code, Codex, and Cursor in one process and one tray icon
+- **Unified providers** - Claude Code, Codex, Cursor, and Grok in one process and one tray icon
 - **Customizable sections** - hide providers you do not use, and expand/collapse individual sections
 - **Fast startup** - cached transcript/session parsing makes warm starts quick
 - **Async refresh jobs** - provider data loads in background jobs so the HUD can appear immediately
@@ -170,6 +170,7 @@ The overlay is a PowerShell/WPF app that reads existing local credentials and us
 - Codex stats are computed from JSONL sessions under `~\.codex\sessions`.
 - Cursor usage is read from Cursor's local auth database and Cursor dashboard APIs.
 - Cursor SQLite reads use the bundled `sqlite3.exe`.
+- Grok live quota comes from the grok CLI billing endpoint using `~\.grok\auth.json` (or `$GROK_HOME\auth.json`).
 
 No separate credentials are stored by the overlay, and no elevated permissions are required.
 

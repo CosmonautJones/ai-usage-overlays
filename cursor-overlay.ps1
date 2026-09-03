@@ -102,28 +102,28 @@ $script:Themes = [ordered]@{
         BgC1 = '#0A1628'; BgC2 = '#060E1C'; BorderC1 = '#0F3D2F'
         BarC1 = '#065F46'; BarC2 = '#34D399'
         LabelFg = '#34D399'; ValueFg = '#6EE7B7'; DimFg = '#7EC4A6'
-        BarTrack = '#0C1A12'; OnDemandFg = '#FBBF24'; GssLabelFg = '#5CA882'
+        BarTrack = '#0C1A12'; OnDemandFg = '#FBBF24'; BrandLabelFg = '#5CA882'
         Stripe = '#065F46','#34D399','#6EE7B7','#A7F3D0'
     }
-    'Global Shop' = @{
+    'TravOS' = @{
         BgC1 = '#081508'; BgC2 = '#040C06'; BorderC1 = '#1A5C2A'
         BarC1 = '#1A5C2A'; BarC2 = '#2D9F48'
         LabelFg = '#2D9F48'; ValueFg = '#4AE068'; DimFg = '#5AAD78'
-        BarTrack = '#0D1F0F'; OnDemandFg = '#FBBF24'; GssLabelFg = '#3DC95A'
+        BarTrack = '#0D1F0F'; OnDemandFg = '#FBBF24'; BrandLabelFg = '#3DC95A'
         Stripe = '#1A5C2A','#2D9F48','#4AE068','#86EFAC'
     }
     'Deep Space' = @{
         BgC1 = '#0F111A'; BgC2 = '#080A12'; BorderC1 = '#252B44'
         BarC1 = '#2D3A8A'; BarC2 = '#818CF8'
         LabelFg = '#818CF8'; ValueFg = '#A5B4FC'; DimFg = '#6B82A8'
-        BarTrack = '#151A2E'; OnDemandFg = '#FB923C'; GssLabelFg = '#6B82A8'
+        BarTrack = '#151A2E'; OnDemandFg = '#FB923C'; BrandLabelFg = '#6B82A8'
         Stripe = '#38BDF8','#818CF8','#C084FC','#FB923C'
     }
     'Mono' = @{
         BgC1 = '#111111'; BgC2 = '#080808'; BorderC1 = '#2A2A2A'
         BarC1 = '#262626'; BarC2 = '#D4D4D4'
         LabelFg = '#D4D4D4'; ValueFg = '#FAFAFA'; DimFg = '#909090'
-        BarTrack = '#1C1C1C'; OnDemandFg = '#E5E5E5'; GssLabelFg = '#909090'
+        BarTrack = '#1C1C1C'; OnDemandFg = '#E5E5E5'; BrandLabelFg = '#909090'
         Stripe = '#404040','#737373','#A3A3A3','#E5E5E5'
     }
 }
@@ -555,25 +555,21 @@ $xaml = @'
           </Border.Background>
         </Border>
 
-        <!-- GSS Footer branding -->
+        <!-- TravOS footer -->
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <Viewbox Width="18" Height="18" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center">
-            <Canvas Width="300" Height="296">
-              <Path x:Name="gssPath" Fill="#2D9F48"
-                    Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+            <Canvas Width="32" Height="32">
+              <Path x:Name="brandPath" Fill="#5C8AAA"
+                    Data="M6,6 H26 V10 H18 V26 H14 V10 H6 Z"/>
             </Canvas>
           </Viewbox>
-          <TextBlock x:Name="gssLabel" Grid.Column="1"
-                     Text="Global Shop Solutions"
-                     Foreground="#5CA882" FontSize="10" FontFamily="Bahnschrift SemiBold"
-                     VerticalAlignment="Center"/>
+          <TextBlock x:Name="brandLabel" Grid.Column="1" Text="TravOS"
+                     Foreground="#5C8AAA" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
         </Grid>
-
-      </StackPanel>
+</StackPanel>
     </DockPanel>
   </Border>
   </Grid>
@@ -721,16 +717,10 @@ function Apply-CursorTheme([string]$name) {
     $od = $script:window.FindName('onDemandText')
     if ($od) { $od.Foreground = NewBrush $t.OnDemandFg }
 
-    # GSS footer label
-    $gss = $script:window.FindName('gssLabel')
-    if ($gss -and $t.GssLabelFg) { $gss.Foreground = NewBrush $t.GssLabelFg }
-
-    # GSS path color: GSS Green always, but brighter in Global Shop theme
-    $gp = $script:window.FindName('gssPath')
-    if ($gp) {
-        $gssGreen = if ($name -eq 'Global Shop') { '#3DC95A' } else { '#2D9F48' }
-        $gp.Fill = NewBrush $gssGreen
-    }
+    $brand = $script:window.FindName('brandLabel')
+    if ($brand -and $t.BrandLabelFg) { $brand.Foreground = NewBrush $t.BrandLabelFg }
+    $bp = $script:window.FindName('brandPath')
+    if ($bp -and $t.BrandLabelFg) { $bp.Fill = NewBrush $t.BrandLabelFg }
 
     # Accent stripe
     $stripe = $script:window.FindName('accentStripe')

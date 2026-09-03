@@ -504,9 +504,6 @@ function Get-Usage {
         $script:State.Data = $resp; $script:State.Status = 'ok'
         $script:State.Message = ''; $script:State.LastFetch = (Get-Date -Format 'HH:mm')
         Clear-ClaudeBackoff
-        # Record to history ring buffer
-        Add-HistorySample $resp
-        Save-History
     } catch {
         $code = $null
         if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }

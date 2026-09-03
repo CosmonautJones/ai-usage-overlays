@@ -1,3 +1,8 @@
+# Credentials / secrets — NEVER commit (public remote)
+claude-profile.json
+**/.credentials.json
+wsl-mirror/
+
 # Runtime files — generated at startup, not tracked
 *.pid
 *-state.json

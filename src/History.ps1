@@ -17,6 +17,42 @@ function Get-ClaudeHistoryQuotaFields {
     )
 }
 
+function Get-HistoryProviderMetricKeys {
+    @(
+        'codex_five_hour'
+        'codex_seven_day'
+        'grok_seven_day'
+        'cursor_requests'
+    )
+}
+
+function ConvertTo-HistoryMetric($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [string] -and [string]::IsNullOrWhiteSpace($value)) { return $null }
+    try {
+        $d = [double]$value
+        if ([double]::IsNaN($d) -or [double]::IsInfinity($d)) { return $null }
+        return $d
+    } catch {
+        return $null
+    }
+}
+
+function Get-HistoryCursorRequestPct {
+    $d = $script:LiveData
+    if (-not $d -or -not $d.'gpt-4') { return $null }
+    $limit = $d.'gpt-4'.maxRequestUsage
+    if ($null -eq $limit) { return $null }
+    try {
+        $lim = [double]$limit
+        if ($lim -le 0) { return $null }
+        $used = [double]$d.'gpt-4'.numRequests
+        return [math]::Min(100.0, ($used / $lim) * 100.0)
+    } catch {
+        return $null
+    }
+}
+
 function Load-History {
     try {
         if (-not (Test-Path $script:HistoryPath)) { return }
@@ -40,12 +76,23 @@ function Add-HistorySample([object]$data) {
         $window = if ($data) { $data.PSObject.Properties[$field].Value } else { $null }
         $sampleData[$field] = if ($window) { [double]$window.utilization } else { $null }
     }
+    $codex = $script:CodexStats
+    $sampleData['codex_five_hour'] = if ($codex) { ConvertTo-HistoryMetric $codex.FiveHourPct } else { $null }
+    $sampleData['codex_seven_day'] = if ($codex) { ConvertTo-HistoryMetric $codex.WeekPct } else { $null }
+    $sampleData['grok_seven_day'] = if ($script:GrokUsage) { ConvertTo-HistoryMetric $script:GrokUsage.WeekPct } else { $null }
+    $sampleData['cursor_requests'] = Get-HistoryCursorRequestPct
     $sample = [PSCustomObject]$sampleData
     $script:History.Add($sample)
-    # Trim to ring buffer max
     while ($script:History.Count -gt $script:HistoryMaxLen) {
         $script:History.RemoveAt(0)
     }
+}
+
+function Complete-UnifiedHistoryPoll {
+    $data = $null
+    if ($script:State -and $script:State.Data) { $data = $script:State.Data }
+    Add-HistorySample $data
+    Save-History
 }
 
 function Save-History {

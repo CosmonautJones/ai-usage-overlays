@@ -1,6 +1,6 @@
 # UnifiedState.ps1 - settings persistence, window positioning, and clipboard export
 
-$script:UnifiedSectionKeys = @('claude', 'codex', 'cursor')
+$script:UnifiedSectionKeys = @('claude', 'codex', 'cursor', 'grok')
 
 if (-not $script:Cfg) { $script:Cfg = @{} }
 $script:UnifiedStateNeedsRepair = $false
@@ -117,6 +117,8 @@ function Load-UnifiedState {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
+        if ($script:Cfg['Theme'] -eq 'Global Shop') { $script:Cfg['Theme'] = 'TravOS' }
+
 
         $sectionsProp = $s.PSObject.Properties['Sections']
         if ($sectionsProp) {
@@ -168,9 +170,18 @@ function Apply-UnifiedSettings {
             $statsPanel.Visibility = if ($script:Cfg.ShowStats) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
         }
 
-        $sparkRow = $script:window.FindName('sparkRow')
-        if ($sparkRow) {
-            $sparkRow.Visibility = if ($script:Cfg.ShowGraph) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        if (-not $script:SparkRowNames) {
+            $script:SparkRowNames = @(
+                'fivehSparkRow','weekSparkRow','fivehSparkRowC','weekSparkRowC',
+                'codexFivehSparkRow','codexWeekSparkRow','codexFivehSparkRowC','codexWeekSparkRowC',
+                'grokWeekSparkRow','grokWeekSparkRowC',
+                'cursorReqSparkRow','cursorReqSparkRowC'
+            )
+        }
+        $sparkVis = if ($script:Cfg.ShowGraph) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+        foreach ($name in $script:SparkRowNames) {
+            $row = $script:window.FindName($name)
+            if ($row -and -not $script:Cfg.ShowGraph) { $row.Visibility = $sparkVis }
         }
 
         # Compact mode: swap each section's Full body for its single-line Compact body.
@@ -450,6 +461,14 @@ function Copy-Stats {
         $lines += "Cursor edits: $($ld.edits30d) (30d) / $($ld.editsToday) today"
         if ($ld.topModel)      { $lines += "Cursor top model: $($ld.topModel) $($ld.topPct)%" }
         if ($ld.linesAccepted) { $lines += "Cursor AI lines accepted (30d): $($ld.linesAccepted)" }
+    }
+
+
+    if ($script:GrokUsage) {
+        $g = $script:GrokUsage
+        if ($g.PlanType) { $lines += "Grok plan: $($g.PlanType)" }
+        if ($null -ne $g.WeekPct) { $lines += ("Grok weekly: {0:0}% used" -f [double]$g.WeekPct) }
+        if ($g.PrepaidBalance) { $lines += "Grok prepaid: $($g.PrepaidBalance)" }
     }
 
     [System.Windows.Clipboard]::SetText(($lines -join "`n"))

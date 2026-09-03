@@ -65,6 +65,13 @@ function Get-QuakeGauge([double]$Pct, [int]$Width = 18) {
 # One gauge line: "  5-HOUR  [########------]  52%  1h33m"
 # LabelWidth is 9 so the longest labels ('INCLUDED', 'lifetime', 'est cost')
 # still get a separating space; PadRight(8) ran them straight into the value.
+function Get-QuakeGaugeWidth {
+    $w = 1920.0
+    if ($script:window -and $script:window.Width -gt 0) { $w = [double]$script:window.Width }
+    if ($w -lt 1500) { return 14 }
+    return 18
+}
+
 function Add-QuakeGaugeLine($TextBlock, [string]$Label, $Pct, $ResetsAt, [int]$LabelWidth = 9, [int]$GaugeWidth = 18) {
     Add-QuakeRun $TextBlock ('  ' + $Label.PadRight($LabelWidth)) $script:QuakeCol.Label
     if ($null -eq $Pct) {
@@ -177,6 +184,30 @@ function Render-QuakeCodex($tb) {
     Add-QuakeStatLine $tb 'est cost' ('~${0:N0} all-time' -f [double]$s.ValueUSD)
 }
 
+function Render-QuakeGrok($tb) {
+    $tb.Inlines.Clear()
+    $s = $script:GrokUsage
+    $suffix = if ($s -and $s.PlanType) { [string]$s.PlanType } else { '' }
+    Add-QuakeSectionTitle $tb 'GROK' $suffix
+    $gw = Get-QuakeGaugeWidth
+
+    if ($script:GrokAuthState -eq 'auth' -or $script:GrokAuthState -eq 'notoken') {
+        Add-QuakeRun $tb ('  ' + [string]$script:GrokErrMsg) $script:QuakeCol.Crit
+        Add-QuakeBreak $tb
+        return
+    }
+
+    if (-not $s) {
+        $msg = if ($script:GrokErrMsg) { [string]$script:GrokErrMsg } else { 'no data' }
+        Add-QuakeRun $tb ('  ' + $msg) $script:QuakeCol.Dim
+        Add-QuakeBreak $tb
+        return
+    }
+
+    Add-QuakeGaugeLine $tb 'WEEKLY' $s.WeekPct $s.WeekResetsAt 9 $gw
+    if ($s.PrepaidBalance) { Add-QuakeStatLine $tb 'prepaid' [string]$s.PrepaidBalance }
+}
+
 function Render-QuakeCursor($tb) {
     $tb.Inlines.Clear()
     $sum = $script:SummaryData
@@ -257,6 +288,7 @@ function Update-QuakeView {
         Render-QuakeClaude ($script:window.FindName('qClaude'))
         Render-QuakeCodex  ($script:window.FindName('qCodex'))
         Render-QuakeCursor ($script:window.FindName('qCursor'))
+        Render-QuakeGrok   ($script:window.FindName('qGrok'))
         Render-QuakeFooter ($script:window.FindName('qFooter'))
     } catch {
         Write-Log ("Update-QuakeView failed: {0}`n{1}" -f $_.Exception.Message, $_.ScriptStackTrace)

@@ -54,6 +54,8 @@ $xaml = @'
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <TextBlock x:Name="qClaude" Grid.Column="0" FontFamily="Consolas" FontSize="12"
                    Foreground="#C7D5E5" TextWrapping="NoWrap"/>
@@ -62,6 +64,9 @@ $xaml = @'
                    Foreground="#C7D5E5" TextWrapping="NoWrap"/>
         <Border Grid.Column="3" Width="1" Background="#FF1E3A5F" Margin="14,2,14,2"/>
         <TextBlock x:Name="qCursor" Grid.Column="4" FontFamily="Consolas" FontSize="12"
+                   Foreground="#C7D5E5" TextWrapping="NoWrap"/>
+        <Border Grid.Column="5" Width="1" Background="#FF1E3A5F" Margin="14,2,14,2"/>
+        <TextBlock x:Name="qGrok" Grid.Column="6" FontFamily="Consolas" FontSize="12"
                    Foreground="#C7D5E5" TextWrapping="NoWrap"/>
       </Grid>
       <TextBlock x:Name="qFooter" Grid.Row="2" FontFamily="Consolas" FontSize="11"
@@ -241,11 +246,12 @@ $xaml = @'
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
-            <!-- Sparkline history graphs (collapsed unless ShowGraph is enabled) -->
-            <StackPanel x:Name="sparkRow" Visibility="Collapsed" Margin="0,4,0,0">
-              <Canvas x:Name="fivehSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left" Margin="0,0,0,3">
+            <StackPanel x:Name="fivehSparkRow" Visibility="Collapsed" Margin="0,2,0,6">
+              <Canvas x:Name="fivehSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
                 <Polyline x:Name="fivehSpark" Stroke="#38BDF8" StrokeThickness="1.5" StrokeLineJoin="Round"/>
               </Canvas>
+            </StackPanel>
+            <StackPanel x:Name="weekSparkRow" Visibility="Collapsed" Margin="0,2,0,6">
               <Canvas x:Name="weekSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
                 <Polyline x:Name="weekSpark" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
               </Canvas>
@@ -314,6 +320,11 @@ $xaml = @'
               </Border>
               <TextBlock Grid.Column="2" x:Name="fivehPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
             </Grid>
+            <StackPanel x:Name="fivehSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
+              <Canvas x:Name="fivehSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
+                <Polyline x:Name="fivehSparkC" Stroke="#38BDF8" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
@@ -326,6 +337,11 @@ $xaml = @'
               </Border>
               <TextBlock Grid.Column="2" x:Name="weekPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
             </Grid>
+            <StackPanel x:Name="weekSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
+              <Canvas x:Name="weekSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
+                <Polyline x:Name="weekSparkC" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
@@ -378,6 +394,36 @@ $xaml = @'
             <TextBlock x:Name="codexErrText" Text="" Foreground="#F87171"
                        FontSize="11" FontFamily="Bahnschrift SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
+            <!-- 5-HOUR metric (hidden unless FiveHourPct is present) -->
+            <StackPanel x:Name="codexFivehRow" Margin="0,0,0,10" Visibility="Collapsed">
+              <Grid Margin="0,0,0,3">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="codexFivehLabel" Grid.Column="0" Text="5-HOUR"
+                           Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
+                <TextBlock Grid.Column="1" x:Name="codexFivehPct" Text="--" Foreground="#F1F5F9"
+                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                <TextBlock Grid.Column="2" x:Name="codexFivehReset" Text=""
+                           Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+              </Grid>
+              <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
+                <Border x:Name="codexFivehBar" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="250">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                      <GradientStop Color="#0369A1" Offset="0"/><GradientStop Color="#38BDF8" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+              </Border>
+              <TextBlock x:Name="codexFivehSub" Text="used" Foreground="#5C7A96"
+                         FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+              <StackPanel x:Name="codexFivehSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
+                <Canvas x:Name="codexFivehSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
+                  <Polyline x:Name="codexFivehSpark" Stroke="#38BDF8" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+                </Canvas>
+              </StackPanel>
+            </StackPanel>
             <!-- Weekly metric (Codex now exposes a single weekly limit) -->
             <StackPanel Margin="0,0,0,10">
               <Grid Margin="0,0,0,3">
@@ -402,6 +448,11 @@ $xaml = @'
               </Border>
               <TextBlock x:Name="codexWeekSub" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+              <StackPanel x:Name="codexWeekSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
+                <Canvas x:Name="codexWeekSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
+                  <Polyline x:Name="codexWeekSpark" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+                </Canvas>
+              </StackPanel>
             </StackPanel>
 
             <Grid x:Name="codexResetsRow" Margin="0,0,0,2">
@@ -443,6 +494,25 @@ $xaml = @'
            </StackPanel>
            <!-- ===== CODEX compact (single-line) ===== -->
            <StackPanel x:Name="codexCompact" Visibility="Collapsed">
+            <StackPanel x:Name="codexFivehRowC" Visibility="Collapsed">
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="codexFivehLabelC" Text="5-HOUR" Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="codexFivehBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#0369A1" Offset="0"/><GradientStop Color="#38BDF8" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="codexFivehPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+            <StackPanel x:Name="codexFivehSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
+              <Canvas x:Name="codexFivehSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
+                <Polyline x:Name="codexFivehSparkC" Stroke="#38BDF8" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
+            </StackPanel>
             <Grid Margin="0,0,0,7">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
@@ -455,6 +525,11 @@ $xaml = @'
               </Border>
               <TextBlock Grid.Column="2" x:Name="codexWeekPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
             </Grid>
+            <StackPanel x:Name="codexWeekSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
+              <Canvas x:Name="codexWeekSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
+                <Polyline x:Name="codexWeekSparkC" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
            </StackPanel>
           </StackPanel>
         </StackPanel>
@@ -521,6 +596,11 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
+              <StackPanel x:Name="cursorReqSparkRow" Visibility="Collapsed" Margin="0,4,0,0">
+                <Canvas x:Name="cursorReqSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
+                  <Polyline x:Name="cursorReqSpark" Stroke="#34D399" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+                </Canvas>
+              </StackPanel>
             </StackPanel>
 
             <!-- Local stats -->
@@ -563,6 +643,99 @@ $xaml = @'
               </Border>
               <TextBlock Grid.Column="2" x:Name="reqCountC" Text="--" Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
             </Grid>
+            <StackPanel x:Name="cursorReqSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
+              <Canvas x:Name="cursorReqSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
+                <Polyline x:Name="cursorReqSparkC" Stroke="#34D399" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
+           </StackPanel>
+          </StackPanel>
+        </StackPanel>
+
+
+        <!-- ============ GROK SECTION ============ -->
+        <StackPanel x:Name="grokSection" Margin="0,0,0,4">
+          <Border x:Name="grokHeader" Background="#11FFFFFF" CornerRadius="6"
+                  Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="grokChevron" Grid.Column="0" Text="v"
+                         Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
+                         VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <TextBlock Grid.Column="1" Text="GROK" Foreground="#E2E8F0"
+                         FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="grokHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
+                         FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
+            </Grid>
+          </Border>
+
+          <StackPanel x:Name="grokBody">
+           <StackPanel x:Name="grokFull">
+            <TextBlock x:Name="grokErrText" Text="" Foreground="#F87171"
+                       FontSize="11" FontFamily="Bahnschrift SemiBold"
+                       TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
+            <StackPanel Margin="0,0,0,10">
+              <Grid Margin="0,0,0,3">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="grokWeekLabel" Grid.Column="0" Text="WEEKLY"
+                           Foreground="#FDE68A" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
+                <TextBlock Grid.Column="1" x:Name="grokWeekPct" Text="--" Foreground="#F1F5F9"
+                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                <TextBlock Grid.Column="2" x:Name="grokWeekReset" Text=""
+                           Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+              </Grid>
+              <Border Height="7" CornerRadius="3.5" Background="#131F33" Width="250" HorizontalAlignment="Left">
+                <Border x:Name="grokWeekBar" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="250">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                      <GradientStop Color="#A16207" Offset="0"/><GradientStop Color="#FDE68A" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+              </Border>
+              <TextBlock x:Name="grokWeekSub" Text="used" Foreground="#5C7A96"
+                         FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+              <StackPanel x:Name="grokWeekSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
+                <Canvas x:Name="grokWeekSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
+                  <Polyline x:Name="grokWeekSpark" Stroke="#FDE68A" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+                </Canvas>
+              </StackPanel>
+            </StackPanel>
+            <Grid Margin="0,0,0,2">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="PLAN" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="PREPAID" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="grokPrepaidText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
+           </StackPanel>
+           <StackPanel x:Name="grokCompact" Visibility="Collapsed">
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="grokWeekLabelC" Text="WEEKLY" Foreground="#FDE68A" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#131F33" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
+                <Border x:Name="grokWeekBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#A16207" Offset="0"/><GradientStop Color="#FDE68A" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+              </Border>
+              <TextBlock Grid.Column="2" x:Name="grokWeekPctC" Text="--" Foreground="#F1F5F9" FontSize="13" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+            <StackPanel x:Name="grokWeekSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
+              <Canvas x:Name="grokWeekSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
+                <Polyline x:Name="grokWeekSparkC" Stroke="#FDE68A" StrokeThickness="1.5" StrokeLineJoin="Round"/>
+              </Canvas>
+            </StackPanel>
            </StackPanel>
           </StackPanel>
         </StackPanel>
@@ -570,18 +743,18 @@ $xaml = @'
         <!-- Footer divider -->
         <Border Height="1" Background="{StaticResource Divider}" Margin="0,6,0,8"/>
 
-        <!-- GSS Footer branding -->
+        <!-- TravOS footer -->
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <Viewbox Width="18" Height="18" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center">
-            <Canvas Width="300" Height="296">
-              <Path x:Name="gssPath" Fill="#2D9F48"
-                    Data="F1 M199.031 194.564h-49.4v-50.686H298l-.349 151.944-48.075.178-.371-57.6a137 137 0 01-108.72 57.276c-.942.015-1.874.084-2.82.084A137.309 137.309 0 015.691 196.124c-.288-.911-.6-1.809-.86-2.728l-.022.013c-.022-.122-.049-.242-.073-.364a137.926 137.926 0 01-3.1-13.836l.181-.1a82.188 82.188 0 01-1.554-12.528 81.209 81.209 0 010-13c.049-.66.1-1.35.155-1.957.195-3.671.467-7.348.9-11.05a171.481 171.481 0 012.241-13.925A148.063 148.063 0 0177.391 19.01C95.644 7.592 118.688-.643 148.322.033a161.335 161.335 0 0116.634 1.259c68.785 8.8 113.938 61.055 127.983 111.234-13.242-.131-72.282-.521-73.465-.53-.117-.237-.226-.472-.345-.71-19.26-48.24-39.475-53.132-52.258-60.343-43.741-19.431-95.319-5.214-128.923 29.191.016.009.04.007.057.016-13.1 14.444-30.914 36.817-34.2 73.433-.033.377-.088.727-.119 1.1.111-.37.237-.733.349-1.1 13.772-44.936 51.915-76.891 95.711-79.876A88.525 88.525 0 0089.677 79.7a70.473 70.473 0 00-28.789 33.72 80.528 80.528 0 00-7.678 34.322c0 38.058 26.488 70.164 62.74 80.343a89.625 89.625 0 0010.4 2.425 75.85 75.85 0 005.335.532q4.356.422 8.828.425a88.667 88.667 0 0066.39-29.381 68.536 68.536 0 006.405-7.519h-14.28z"/>
+            <Canvas Width="32" Height="32">
+              <Path x:Name="brandPath" Fill="#5C8AAA"
+                    Data="M6,6 H26 V10 H18 V26 H14 V10 H6 Z"/>
             </Canvas>
           </Viewbox>
-          <TextBlock x:Name="gssLabel" Grid.Column="1" Text="Global Shop Solutions"
+          <TextBlock x:Name="brandLabel" Grid.Column="1" Text="TravOS"
                      Foreground="#5C8AAA" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
         </Grid>
 
@@ -676,18 +849,23 @@ function Set-CompactBar([string]$bar, [string]$pct, $util) {
 # ---------------------------------------------------------------------------
 # Set-Spark - renders a sparkline polyline onto a named Canvas
 # ---------------------------------------------------------------------------
-function Set-Spark([string]$sparkName, [string]$canvasName, [string]$metricKey) {
+function Set-Spark([string]$sparkName, [string]$canvasName, [string]$metricKey, [string]$rowName = $null) {
     $spark  = $script:window.FindName($sparkName)
     $canvas = $script:window.FindName($canvasName)
-    if (-not $spark -or -not $canvas) { return }
+    $row    = if ($rowName) { $script:window.FindName($rowName) } else { $null }
+    $hide = {
+        if ($row) { $row.Visibility = [System.Windows.Visibility]::Collapsed }
+    }
+    if (-not $spark -or -not $canvas) { & $hide; return }
     $spark.Points.Clear()
 
+    $showGraph = $script:Cfg -and [bool]$script:Cfg.ShowGraph
     $samples = $script:History
-    if ($null -eq $samples -or $samples.Count -lt 2) { return }
+    if (-not $showGraph -or $null -eq $samples -or $samples.Count -lt 2) { & $hide; return }
 
-    # Filter to samples with a value for this metric
     $valid = @($samples | Where-Object { $null -ne $_.$metricKey })
-    if ($valid.Count -lt 2) { return }
+    if ($valid.Count -lt 2) { & $hide; return }
+    if ($row) { $row.Visibility = [System.Windows.Visibility]::Visible }
 
     # X: time range; Y: utilization 0-100 mapped to canvas height (inverted: 0% at bottom, 100% at top)
     $w = $canvas.Width
@@ -721,14 +899,10 @@ function Apply-UnifiedTheme([string]$name) {
         $mb.BorderBrush = NewBrush $t.BorderC1
     }
 
-    # GSS footer
-    $gss = $script:window.FindName('gssLabel')
-    if ($gss -and $t.GssLabelFg) { $gss.Foreground = NewBrush $t.GssLabelFg }
-    $gp = $script:window.FindName('gssPath')
-    if ($gp) {
-        $gssGreen = if ($name -eq 'Global Shop') { '#3DC95A' } else { '#2D9F48' }
-        $gp.Fill = NewBrush $gssGreen
-    }
+    $brand = $script:window.FindName('brandLabel')
+    if ($brand -and $t.BrandLabelFg) { $brand.Foreground = NewBrush $t.BrandLabelFg }
+    $bp = $script:window.FindName('brandPath')
+    if ($bp -and $t.BrandLabelFg) { $bp.Fill = NewBrush $t.BrandLabelFg }
 
     # Claude/Codex bars/labels/subs
     $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexWeekBar','fivehBarC','weekBarC','fabBarC','opusBarC','codexWeekBarC')
@@ -750,6 +924,19 @@ function Apply-UnifiedTheme([string]$name) {
     $cc  = if ($t.CursorColors) { $t.CursorColors } elseif ($t.FivehColors) { $t.FivehColors } else { @('#065F46','#34D399') }
     $cfg = if ($t.CursorFg)     { $t.CursorFg }     elseif ($t.FivehFg)     { $t.FivehFg }     else { '#34D399' }
     $script:CursorColorsCur = $cc
+    $gc  = if ($t.GrokColors) { $t.GrokColors } elseif ($t.OpusColors) { $t.OpusColors } else { @('#A16207','#FDE68A') }
+    $gfg = if ($t.GrokFg)     { $t.GrokFg }     elseif ($t.OpusFg)     { $t.OpusFg }     else { '#FDE68A' }
+    $script:GrokColorsCur = $gc
+    foreach ($bn in @('grokWeekBar','grokWeekBarC')) {
+        $gb = $script:window.FindName($bn)
+        if ($gb) { $gb.Background = New-GradientBrush $gc[0] $gc[1] }
+    }
+    foreach ($ln in @('grokWeekLabel','grokWeekLabelC')) {
+        $gl = $script:window.FindName($ln)
+        if ($gl) { $gl.Foreground = NewBrush $gfg }
+    }
+    $gs = $script:window.FindName('grokWeekSub')
+    if ($gs) { $gs.Foreground = NewBrush ($gfg + '55') }
     foreach ($bn in @('reqBar','reqBarC')) {
         $rb = $script:window.FindName($bn)
         if ($rb) { $rb.Background = New-GradientBrush $cc[0] $cc[1] }
@@ -962,12 +1149,14 @@ function Update-ClaudeSection {
 
     Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at
     Set-CompactBar 'fivehBarC' 'fivehPctC' $d.five_hour.utilization
-    Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour'
+    Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour' 'fivehSparkRow'
+    Set-Spark 'fivehSparkC' 'fivehSparkCanvasC' 'five_hour' 'fivehSparkRowC'
     if ($hasAlert) { Check-Alert 'five_hour' $d.five_hour.utilization }
 
     Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at
     Set-CompactBar 'weekBarC' 'weekPctC' $d.seven_day.utilization
-    Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day'
+    Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day' 'weekSparkRow'
+    Set-Spark 'weekSparkC' 'weekSparkCanvasC' 'seven_day' 'weekSparkRowC'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
     Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at
@@ -1025,8 +1214,13 @@ function Update-CodexSection {
 
     $s = $script:CodexStats
     if (-not $s) {
+        foreach ($n in @('codexFivehRow','codexFivehRowC')) {
+            $el = $script:window.FindName($n); if ($el) { $el.Visibility = [System.Windows.Visibility]::Collapsed }
+        }
         Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
         Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $null
+        Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
+        Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
         $cr = $script:window.FindName('codexResetsText'); if ($cr) { $cr.Text = '--' }
         $tt = $script:window.FindName('codexTokText'); if ($tt) { $tt.Text = '--' }
         $cv = $script:window.FindName('codexValText'); if ($cv) { $cv.Text = '--' }
@@ -1036,8 +1230,23 @@ function Update-CodexSection {
         $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = '' }
         return
     }
+    $fivehVis = if ($null -ne $s.FiveHourPct) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+    foreach ($n in @('codexFivehRow','codexFivehRowC')) {
+        $el = $script:window.FindName($n); if ($el) { $el.Visibility = $fivehVis }
+    }
+    if ($null -ne $s.FiveHourPct) {
+        Set-SectionBar 'codexFivehBar' 'codexFivehPct' 'codexFivehSub' 'codexFivehReset' $s.FiveHourPct $s.FiveHourResetsAt
+        Set-CompactBar 'codexFivehBarC' 'codexFivehPctC' $s.FiveHourPct
+        Set-Spark 'codexFivehSpark' 'codexFivehSparkCanvas' 'codex_five_hour' 'codexFivehSparkRow'
+        Set-Spark 'codexFivehSparkC' 'codexFivehSparkCanvasC' 'codex_five_hour' 'codexFivehSparkRowC'
+    } else {
+        Set-Spark 'codexFivehSpark' 'codexFivehSparkCanvas' 'codex_five_hour' 'codexFivehSparkRow'
+        Set-Spark 'codexFivehSparkC' 'codexFivehSparkCanvasC' 'codex_five_hour' 'codexFivehSparkRowC'
+    }
     Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $s.WeekPct $s.WeekResetsAt
     Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $s.WeekPct
+    Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
+    Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
     $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $s.WeekResetsAt }
     $codexResetsText = $script:window.FindName('codexResetsText')
     if ($codexResetsText) {
@@ -1059,6 +1268,32 @@ function Update-CodexSection {
 # Update-CursorSection - ports cursor-overlay.ps1 Update-UI body (minus chrome
 # dot/time), renamed dup elements + namespaced error/fetch vars.
 # ---------------------------------------------------------------------------
+function Update-GrokSection {
+    Set-SectionAuthError 'grokErrText' $script:GrokAuthState $script:GrokErrMsg | Out-Null
+
+    $s = $script:GrokUsage
+    if (-not $s) {
+        Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $null $null
+        Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $null
+        Set-Spark 'grokWeekSpark' 'grokWeekSparkCanvas' 'grok_seven_day' 'grokWeekSparkRow'
+        Set-Spark 'grokWeekSparkC' 'grokWeekSparkCanvasC' 'grok_seven_day' 'grokWeekSparkRowC'
+        $pt = $script:window.FindName('grokPlanText'); if ($pt) { $pt.Text = '--' }
+        $pp = $script:window.FindName('grokPrepaidText'); if ($pp) { $pp.Text = '--' }
+        $hd = $script:window.FindName('grokHeaderDetail'); if ($hd) { $hd.Text = '' }
+        return
+    }
+    Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $s.WeekPct $s.WeekResetsAt
+    Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $s.WeekPct
+    Set-Spark 'grokWeekSpark' 'grokWeekSparkCanvas' 'grok_seven_day' 'grokWeekSparkRow'
+    Set-Spark 'grokWeekSparkC' 'grokWeekSparkCanvasC' 'grok_seven_day' 'grokWeekSparkRowC'
+    $hd = $script:window.FindName('grokHeaderDetail')
+    if ($hd) { $hd.Text = Format-Reset $s.WeekResetsAt }
+    $pt = $script:window.FindName('grokPlanText')
+    if ($pt) { $pt.Text = if ($s.PlanType) { [string]$s.PlanType } else { '--' } }
+    $pp = $script:window.FindName('grokPrepaidText')
+    if ($pp) { $pp.Text = if ($s.PrepaidBalance) { [string]$s.PrepaidBalance } else { '--' } }
+}
+
 function Update-CursorSection {
     # Requests bar
     $d = $script:LiveData
@@ -1152,6 +1387,9 @@ function Update-CursorSection {
             $uhd.Text = ''
         }
     }
+
+    Set-Spark 'cursorReqSpark' 'cursorReqSparkCanvas' 'cursor_requests' 'cursorReqSparkRow'
+    Set-Spark 'cursorReqSparkC' 'cursorReqSparkCanvasC' 'cursor_requests' 'cursorReqSparkRowC'
 }
 
 # ---------------------------------------------------------------------------
@@ -1177,6 +1415,7 @@ function Update-AllSections {
     Update-ClaudeSection
     Update-CodexSection
     Update-CursorSection
+    Update-GrokSection
 
     # NOTE: Resize-ToContent is deliberately NOT called here. This runs on the
     # 30s tick timer, and a full-tree Measure every 30s is wasted work (content
