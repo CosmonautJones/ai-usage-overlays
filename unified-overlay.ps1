@@ -253,6 +253,10 @@ function Invoke-OverlaySnapshot {
         $grokError = Invoke-SafeSnapshotStep 'Grok usage' { [void](Get-GrokLiveUsage -TimeoutSec $grokTimeout) }
     }
 
+    if (Get-Command Complete-UnifiedHistoryPoll -ErrorAction SilentlyContinue) {
+        Complete-UnifiedHistoryPoll
+    }
+
     $providers = [ordered]@{
         claude = New-SkippedProviderSnapshot
         codex  = New-SkippedProviderSnapshot
@@ -715,8 +719,6 @@ function Complete-RefreshJobs {
                         $script:AuthState       = $r['AuthState']
                         $script:CursorErrMsg    = $r['CursorErrMsg']
                         $script:CursorLastFetch = $r['CursorLastFetch']
-                        $script:History         = [System.Collections.Generic.List[object]]::new()
-                        foreach ($sample in @($r['History'])) { [void]$script:History.Add($sample) }
                         Sync-ClaudePollTimerInterval $script:State
                     }
                     'ClaudeStats' {
@@ -739,9 +741,6 @@ function Complete-RefreshJobs {
                 }
 
                 if ($applied) {
-                    if (Get-Command Sync-HistoryProviderMetrics -ErrorAction SilentlyContinue) {
-                        Sync-HistoryProviderMetrics
-                    }
                     Update-AllSections
                     Resize-ToContent
                 }
@@ -757,6 +756,14 @@ function Complete-RefreshJobs {
         }
     }
 
+    if ($completedAny -and (-not $script:pollJobs -or $script:pollJobs.Count -eq 0)) {
+        if (Get-Command Complete-UnifiedHistoryPoll -ErrorAction SilentlyContinue) {
+            Complete-UnifiedHistoryPoll
+        }
+        Update-AllSections
+        Resize-ToContent
+    }
+
     return $completedAny
 }
 
@@ -765,6 +772,7 @@ function Complete-RefreshJobs {
 # data load runs async and each section fills in as its refresh job returns.
 # ---------------------------------------------------------------------------
 Load-UnifiedState
+Load-History
 if ($script:UnifiedStateNeedsRepair) { Save-UnifiedState }
 if (Test-DropdownMode) { Initialize-DropdownPinnedPosition }
 Sync-ViewModeMenuItems   # menu was built from defaults before state was read

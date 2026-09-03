@@ -126,7 +126,6 @@ Describe 'Add-HistorySample provider extras' {
         $script:GrokUsage = [pscustomobject]@{ WeekPct = 25 }
         $script:LiveData = [pscustomobject]@{ 'gpt-4' = [pscustomobject]@{ numRequests = 10; maxRequestUsage = 50 } }
         Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
-        Sync-HistoryProviderMetrics
         $s = $script:History[0]
         $s.codex_five_hour | Should -Be 33
         $s.codex_seven_day | Should -Be 100
@@ -136,13 +135,11 @@ Describe 'Add-HistorySample provider extras' {
     It 'leaves cursor_requests null when maxRequestUsage is 0' {
         $script:LiveData = [pscustomobject]@{ 'gpt-4' = [pscustomobject]@{ numRequests = 0; maxRequestUsage = 0 } }
         Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
-        Sync-HistoryProviderMetrics
         $script:History[0].cursor_requests | Should -BeNullOrEmpty
     }
     It 'leaves Codex 5-hour null when FiveHourPct is missing' {
         $script:CodexStats = [pscustomobject]@{ WeekPct = 80 }
         Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
-        Sync-HistoryProviderMetrics
         $script:History[0].codex_five_hour | Should -BeNullOrEmpty
         $script:History[0].codex_seven_day | Should -Be 80
     }
@@ -175,6 +172,42 @@ Describe 'Spark rows under each real bar' {
         $shell | Should -Match 'Set-Spark .*grok_seven_day'
         $shell | Should -Match 'Set-Spark .*cursor_requests'
         $state | Should -Match 'SparkRowNames'
-        $overlay | Should -Match 'Sync-HistoryProviderMetrics'
+        $overlay | Should -Match 'Complete-UnifiedHistoryPoll'
+    }
+}
+
+Describe 'Complete-UnifiedHistoryPoll (D-HIST-1)' {
+    BeforeEach {
+        $script:History = [System.Collections.Generic.List[object]]::new()
+        $script:HistoryMaxLen = 480
+        $script:State = @{ Data = $null; Status = 'auth'; Message = 'Auth expired' }
+        $script:CodexStats = $null
+        $script:GrokUsage = $null
+        $script:LiveData = $null
+        $script:HistoryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('hist-' + [guid]::NewGuid().ToString('N') + '.json')
+    }
+    AfterEach {
+        Remove-Item -LiteralPath $script:HistoryPath -Force -ErrorAction SilentlyContinue
+    }
+    It 'two poll completes with Claude data null still produce two timestamps and non-null Codex/Grok keys' {
+        $script:CodexStats = [pscustomobject]@{ FiveHourPct = 12; WeekPct = 80 }
+        $script:GrokUsage = [pscustomobject]@{ WeekPct = 25 }
+        Complete-UnifiedHistoryPoll
+        Start-Sleep -Milliseconds 15
+        Complete-UnifiedHistoryPoll
+        $script:History.Count | Should -Be 2
+        $script:History[0].t | Should -Not -Be $script:History[1].t
+        $script:History[0].five_hour | Should -BeNullOrEmpty
+        $script:History[1].five_hour | Should -BeNullOrEmpty
+        $script:History[0].seven_day | Should -BeNullOrEmpty
+        $script:History[1].seven_day | Should -BeNullOrEmpty
+        $script:History[0].codex_five_hour | Should -Be 12
+        $script:History[1].codex_five_hour | Should -Be 12
+        $script:History[0].codex_seven_day | Should -Be 80
+        $script:History[1].codex_seven_day | Should -Be 80
+        $script:History[0].grok_seven_day | Should -Be 25
+        $script:History[1].grok_seven_day | Should -Be 25
+        $script:History[0].cursor_requests | Should -BeNullOrEmpty
+        $script:History[1].cursor_requests | Should -BeNullOrEmpty
     }
 }
