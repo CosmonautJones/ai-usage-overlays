@@ -1,12 +1,18 @@
 # ProviderLogin.ps1 - tray-spawned CLI login (claude / codex / grok)
 #
-# Resolve via Get-Command. Never mutate PATH. Never write auth.json or tokens.
+# Resolve via Get-Command (grok also checks ~/.grok/bin/grok.exe). Never mutate PATH. Never write auth.json or tokens.
 # Spawn a visible console; OAuth finishes in the CLI's browser/device prompt.
 
 function Resolve-ProviderLoginCli {
     param([Parameter(Mandatory = $true)][string]$CliName)
 
     $cmd = Get-Command -Name $CliName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $cmd -and $CliName -match '^(?i)grok$') {
+        $wellKnown = Join-Path $HOME '.grok\bin\grok.exe'
+        if (Test-Path -LiteralPath $wellKnown) {
+            return [pscustomobject]@{ Name = 'grok'; Path = $wellKnown; CommandType = 'Application' }
+        }
+    }
     if (-not $cmd) { return $null }
 
     if ([string]$cmd.CommandType -eq 'Alias' -and $cmd.ResolvedCommand) {

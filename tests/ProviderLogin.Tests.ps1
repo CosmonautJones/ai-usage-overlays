@@ -6,9 +6,19 @@ Describe 'Provider login CLI resolve' {
         . (Join-Path $root 'src\ProviderLogin.ps1')
     }
 
-    It 'returns null when Get-Command finds nothing' {
+    It 'returns null when Get-Command finds nothing and grok.exe is absent' {
         Mock Get-Command { $null }
+        Mock Test-Path { $false }
         Resolve-ProviderLoginCli 'grok' | Should -BeNullOrEmpty
+    }
+
+    It 'falls back to ~/.grok/bin/grok.exe when Get-Command misses grok' {
+        Mock Get-Command { $null }
+        Mock Test-Path { $true }
+        $resolved = Resolve-ProviderLoginCli 'grok'
+        $resolved.Name | Should -Be 'grok'
+        $resolved.Path | Should -Match '[\\/]\.grok[\\/]bin[\\/]grok\.exe$'
+        $resolved.CommandType | Should -Be 'Application'
     }
 
     It 'resolves via Get-Command Source and does not mutate PATH' {

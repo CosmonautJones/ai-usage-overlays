@@ -748,12 +748,15 @@ $xaml = @'
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
-          <Viewbox Width="18" Height="18" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center">
-            <Canvas Width="32" Height="32">
-              <Path x:Name="brandPath" Fill="#5C8AAA"
-                    Data="M6,6 H26 V10 H18 V26 H14 V10 H6 Z"/>
-            </Canvas>
-          </Viewbox>
+          <Grid Width="18" Height="18" Margin="0,0,7,0" VerticalAlignment="Center">
+            <Viewbox x:Name="brandMarkBox" Stretch="Uniform">
+              <Canvas Width="32" Height="32">
+                <Path x:Name="brandPath" Fill="#5C8AAA"
+                      Data="M6,6 H26 V10 H18 V26 H14 V10 H6 Z"/>
+              </Canvas>
+            </Viewbox>
+            <Image x:Name="brandMarkImage" Stretch="Uniform" Visibility="Collapsed"/>
+          </Grid>
           <TextBlock x:Name="brandLabel" Grid.Column="1" Text="TravOS"
                      Foreground="#5C8AAA" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
         </Grid>
@@ -888,6 +891,47 @@ function Set-Spark([string]$sparkName, [string]$canvasName, [string]$metricKey, 
 # Apply-UnifiedTheme - applies $script:Themes[$name] across the chrome and all
 # three sections. Mirrors Ui.ps1 Apply-Theme; extends to codex/cursor. Greyscale-safe.
 # ---------------------------------------------------------------------------
+function Get-OverlayBrandPngPath {
+    Join-Path $env:LOCALAPPDATA 'AIUsageOverlay\brand.png'
+}
+
+function Apply-FooterBrandMark {
+    $img = $script:window.FindName('brandMarkImage')
+    $box = $script:window.FindName('brandMarkBox')
+    if (-not $img -or -not $box) { return }
+
+    $path = Get-OverlayBrandPngPath
+    $ok = $false
+    if (Test-Path -LiteralPath $path) {
+        try {
+            $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+            $bmp.BeginInit()
+            $bmp.CreateOptions = [System.Windows.Media.Imaging.BitmapCreateOptions]::IgnoreColorProfile
+            $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+            $stream = [System.IO.File]::OpenRead($path)
+            try {
+                $bmp.StreamSource = $stream
+                $bmp.EndInit()
+            } finally {
+                $stream.Dispose()
+            }
+            if ($bmp.CanFreeze) { $bmp.Freeze() }
+            $img.Source = $bmp
+            $ok = $true
+        } catch {
+            $img.Source = $null
+        }
+    }
+
+    if ($ok) {
+        $img.Visibility = [System.Windows.Visibility]::Visible
+        $box.Visibility = [System.Windows.Visibility]::Collapsed
+    } else {
+        $img.Visibility = [System.Windows.Visibility]::Collapsed
+        $box.Visibility = [System.Windows.Visibility]::Visible
+    }
+}
+
 function Apply-UnifiedTheme([string]$name) {
     $t = $script:Themes[$name]
     if (-not $t) { return }
@@ -903,6 +947,7 @@ function Apply-UnifiedTheme([string]$name) {
     if ($brand -and $t.BrandLabelFg) { $brand.Foreground = NewBrush $t.BrandLabelFg }
     $bp = $script:window.FindName('brandPath')
     if ($bp -and $t.BrandLabelFg) { $bp.Fill = NewBrush $t.BrandLabelFg }
+    Apply-FooterBrandMark
 
     # Claude/Codex bars/labels/subs
     $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexWeekBar','fivehBarC','weekBarC','fabBarC','opusBarC','codexWeekBarC')
