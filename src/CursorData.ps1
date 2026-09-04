@@ -14,6 +14,75 @@ function Fmt-Num([double]$n) {
     return ('{0:0}' -f $n)
 }
 
+
+function ConvertTo-CursorSummaryMetric($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [string] -and [string]::IsNullOrWhiteSpace($value)) { return $null }
+    try {
+        $d = [double]$value
+        if ([double]::IsNaN($d) -or [double]::IsInfinity($d)) { return $null }
+        return $d
+    } catch {
+        return $null
+    }
+}
+
+function Get-CursorDisplayMessagePercent([string]$Message) {
+    if ([string]::IsNullOrWhiteSpace($Message)) { return $null }
+    $m = [regex]::Match($Message, '(\d+(?:\.\d+)?)\s*%')
+    if (-not $m.Success) { return $null }
+    return ConvertTo-CursorSummaryMetric $m.Groups[1].Value
+}
+
+function Get-CursorPlanUsageFromSummary($Summary = $script:SummaryData) {
+    # Plan & Usage pools from usage-summary (Settings: Cursor Models / Other Models).
+    # Never invent 0 from missing fields. Prefer numeric plan.* over display-message parse.
+    $used = $null; $limit = $null; $autoPct = $null; $apiPct = $null
+    $odEnabled = $null; $odUsedCents = $null
+
+    if ($Summary) {
+        $plan = $null
+        if ($Summary.individualUsage) { $plan = $Summary.individualUsage.plan }
+        if ($plan) {
+            $used = ConvertTo-CursorSummaryMetric $plan.used
+            $limit = ConvertTo-CursorSummaryMetric $plan.limit
+            $autoPct = ConvertTo-CursorSummaryMetric $plan.autoPercentUsed
+            $apiPct = ConvertTo-CursorSummaryMetric $plan.apiPercentUsed
+        }
+        if ($null -eq $autoPct) {
+            $autoPct = Get-CursorDisplayMessagePercent ([string]$Summary.autoModelSelectedDisplayMessage)
+        }
+        if ($null -eq $apiPct) {
+            $apiPct = Get-CursorDisplayMessagePercent ([string]$Summary.namedModelSelectedDisplayMessage)
+        }
+        if ($Summary.individualUsage -and $Summary.individualUsage.onDemand) {
+            $od = $Summary.individualUsage.onDemand
+            if ($null -ne $od.enabled) { $odEnabled = [bool]$od.enabled }
+            $odUsedCents = ConvertTo-CursorSummaryMetric $od.used
+        }
+    }
+
+    $barPct = $null
+    if ($null -ne $autoPct) {
+        $barPct = [math]::Min(100.0, [double]$autoPct)
+    } elseif (($null -ne $limit) -and ([double]$limit -gt 0) -and ($null -ne $used)) {
+        $barPct = [math]::Min(100.0, ([double]$used / [double]$limit) * 100.0)
+    }
+
+    [pscustomobject]@{
+        Used            = $used
+        Limit           = $limit
+        AutoPercent     = $autoPct
+        ApiPercent      = $apiPct
+        BarPercent      = $barPct
+        OnDemandEnabled = $odEnabled
+        OnDemandUsedCents = $odUsedCents
+        MembershipType  = if ($Summary) { $Summary.membershipType } else { $null }
+        BillingCycleEnd = if ($Summary) { $Summary.billingCycleEnd } else { $null }
+    }
+}
+
+
 # ---------------------------------------------------------------------------
 # SQLite helper - reads Cursor's SQLite databases via bundled sqlite3.exe
 # ---------------------------------------------------------------------------

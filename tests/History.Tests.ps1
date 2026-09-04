@@ -5,6 +5,7 @@ BeforeAll {
     $script:AppDir = $root
     . (Join-Path $root 'src\Config.ps1')
     . (Join-Path $root 'src\History.ps1')
+    . (Join-Path $root 'src\CursorData.ps1')
 }
 
 Describe 'Add-HistorySample (ring buffer)' {
@@ -103,6 +104,7 @@ Describe 'Add-HistorySample provider extras' {
         $script:CodexStats = $null
         $script:GrokUsage = $null
         $script:LiveData = $null
+        $script:SummaryData = $null
         $script:HistoryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('hist-' + [guid]::NewGuid().ToString('N') + '.json')
     }
     AfterEach {
@@ -124,16 +126,24 @@ Describe 'Add-HistorySample provider extras' {
     It 'records live extras as numbers without coercing missing to 0' {
         $script:CodexStats = [pscustomobject]@{ FiveHourPct = 33; WeekPct = 100 }
         $script:GrokUsage = [pscustomobject]@{ WeekPct = 25 }
-        $script:LiveData = [pscustomobject]@{ 'gpt-4' = [pscustomobject]@{ numRequests = 10; maxRequestUsage = 50 } }
+        $script:SummaryData = [pscustomobject]@{
+            individualUsage = [pscustomobject]@{
+                plan = [pscustomobject]@{ used = 8; limit = 2000; autoPercentUsed = 1; apiPercentUsed = 6 }
+            }
+        }
         Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
         $s = $script:History[0]
         $s.codex_five_hour | Should -Be 33
         $s.codex_seven_day | Should -Be 100
         $s.grok_seven_day | Should -Be 25
-        $s.cursor_requests | Should -Be 20
+        $s.cursor_requests | Should -Be 1
     }
-    It 'leaves cursor_requests null when maxRequestUsage is 0' {
-        $script:LiveData = [pscustomobject]@{ 'gpt-4' = [pscustomobject]@{ numRequests = 0; maxRequestUsage = 0 } }
+    It 'leaves cursor_requests null when plan limit is missing or 0' {
+        $script:SummaryData = [pscustomobject]@{
+            individualUsage = [pscustomobject]@{
+                plan = [pscustomobject]@{ used = 0; limit = 0; autoPercentUsed = $null; apiPercentUsed = $null }
+            }
+        }
         Add-HistorySample ([PSCustomObject]@{ five_hour = [PSCustomObject]@{ utilization = 10.0 } })
         $script:History[0].cursor_requests | Should -BeNullOrEmpty
     }

@@ -39,18 +39,16 @@ function ConvertTo-HistoryMetric($value) {
 }
 
 function Get-HistoryCursorRequestPct {
-    $d = $script:LiveData
-    if (-not $d -or -not $d.'gpt-4') { return $null }
-    $limit = $d.'gpt-4'.maxRequestUsage
-    if ($null -eq $limit) { return $null }
-    try {
-        $lim = [double]$limit
-        if ($lim -le 0) { return $null }
-        $used = [double]$d.'gpt-4'.numRequests
-        return [math]::Min(100.0, ($used / $lim) * 100.0)
-    } catch {
+    # Plan utilization from usage-summary (Cursor Models). Never invent 0 from missing gpt-4.
+    if (Get-Command Get-CursorPlanUsageFromSummary -ErrorAction SilentlyContinue) {
+        $plan = Get-CursorPlanUsageFromSummary $script:SummaryData
+        if ($null -ne $plan.BarPercent) { return [double]$plan.BarPercent }
+        if (($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0) -and ($null -ne $plan.Used)) {
+            return [math]::Min(100.0, ([double]$plan.Used / [double]$plan.Limit) * 100.0)
+        }
         return $null
     }
+    return $null
 }
 
 function Load-History {
