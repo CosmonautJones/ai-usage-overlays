@@ -220,18 +220,28 @@ function Render-QuakeCursor($tb) {
         return
     }
 
-    $d = $script:LiveData
-    if ($d -and $d.'gpt-4' -and [double]$d.'gpt-4'.maxRequestUsage -gt 0) {
-        $used  = [double]$d.'gpt-4'.numRequests
-        $limit = [double]$d.'gpt-4'.maxRequestUsage
-        Add-QuakeGaugeLine $tb 'INCLUDED' (($used / $limit) * 100) $null
-        Add-QuakeStatLine $tb 'requests' ('{0:N0} / {1:N0}' -f $used, $limit)
+    $plan = $null
+    if (Get-Command Get-CursorPlanUsageFromSummary -ErrorAction SilentlyContinue) {
+        $plan = Get-CursorPlanUsageFromSummary $sum
+    }
+    if ($plan -and ($null -ne $plan.BarPercent)) {
+        Add-QuakeGaugeLine $tb 'CURSOR' $plan.BarPercent $null
+        if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
+            Add-QuakeStatLine $tb 'models' ('{0:N0} / {1:N0}' -f [double]$plan.Used, [double]$plan.Limit)
+        } else {
+            Add-QuakeStatLine $tb 'models' ('{0:0}%' -f [double]$plan.BarPercent)
+        }
     } else {
-        Add-QuakeGaugeLine $tb 'INCLUDED' $null $null
+        Add-QuakeGaugeLine $tb 'CURSOR' $null $null
+    }
+    if ($plan -and ($null -ne $plan.ApiPercent)) {
+        Add-QuakeStatLine $tb 'other' ('{0:0}%' -f [double]$plan.ApiPercent)
     }
 
     if ($sum) {
-        if ($sum.individualUsage -and $sum.individualUsage.onDemand) {
+        if ($plan -and ($null -ne $plan.OnDemandEnabled) -and (-not $plan.OnDemandEnabled)) {
+            Add-QuakeStatLine $tb 'on-dmd' 'off' 9 $script:QuakeCol.Dim
+        } elseif ($sum.individualUsage -and $sum.individualUsage.onDemand) {
             Add-QuakeStatLine $tb 'on-dmd' ('${0:N2}' -f ([double]$sum.individualUsage.onDemand.used / 100.0)) 9 $script:QuakeCol.Bright
         }
         if ($sum.teamUsage -and $sum.teamUsage.onDemand) {

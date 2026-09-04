@@ -569,7 +569,7 @@ $xaml = @'
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="reqLabel" Grid.Column="0" Text="INCLUDED REQUESTS"
+                <TextBlock x:Name="reqLabel" Grid.Column="0" Text="CURSOR MODELS"
                            Foreground="#34D399" FontSize="11" FontFamily="Bahnschrift SemiBold"
                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                 <Border x:Name="overPill" Grid.Column="1" Background="#1F1800"
@@ -582,7 +582,7 @@ $xaml = @'
               </Grid>
               <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Requests"
+                <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Plan"
                            Foreground="#7EC4A6" FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"/>
                 <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
                            Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
@@ -601,6 +601,19 @@ $xaml = @'
                   <Polyline x:Name="cursorReqSpark" Stroke="#34D399" StrokeThickness="1.5" StrokeLineJoin="Round"/>
                 </Canvas>
               </StackPanel>
+            </StackPanel>
+
+            <!-- Other Models (API / named) from usage-summary -->
+            <StackPanel x:Name="otherModelsRow" Margin="0,0,0,10">
+              <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="otherModelsLabel" Grid.Column="0" Text="OTHER MODELS"
+                           Foreground="#34D399" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="otherModelsText" Grid.Column="1" Text="--"
+                           Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
+              </Grid>
             </StackPanel>
 
             <!-- Local stats -->
@@ -635,13 +648,20 @@ $xaml = @'
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" x:Name="reqLabelC" Text="REQS" Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="0" x:Name="reqLabelC" Text="MODELS" Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <Border Grid.Column="1" Height="7" CornerRadius="3.5" Background="#0E2018" Width="120" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <Border x:Name="reqBarC" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,0"><GradientStop Color="#065F46" Offset="0"/><GradientStop Color="#34D399" Offset="1"/></LinearGradientBrush></Border.Background>
                 </Border>
               </Border>
               <TextBlock Grid.Column="2" x:Name="reqCountC" Text="--" Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0"/>
+            </Grid>
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="50"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" x:Name="otherModelsLabelC" Text="OTHER" Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="otherModelsTextC" Text="--" Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             </Grid>
             <StackPanel x:Name="cursorReqSparkRowC" Visibility="Collapsed" Margin="0,0,0,7">
               <Canvas x:Name="cursorReqSparkCanvasC" Width="120" Height="14" HorizontalAlignment="Left" Margin="50,0,0,0">
@@ -1340,45 +1360,63 @@ function Update-GrokSection {
 }
 
 function Update-CursorSection {
-    # Requests bar
-    $d = $script:LiveData
-    if ($d -and $d.'gpt-4') {
-        $used  = [int]$d.'gpt-4'.numRequests
-        $limit = [int]$d.'gpt-4'.maxRequestUsage
-        $pct   = if ($limit -gt 0) { [math]::Min(100, [math]::Round($used / $limit * 100)) } else { 0 }
-        $over  = $used -gt $limit
+    # Cursor Models / Other Models / on-demand from usage-summary (Plan & Usage).
+    # Do not paint from legacy usage.gpt-4 numRequests/maxRequestUsage (null → 0/0).
+    $plan = Get-CursorPlanUsageFromSummary $script:SummaryData
+    $hasBar = ($null -ne $plan.BarPercent)
+    $pct = if ($hasBar) { [math]::Min(100, [math]::Round([double]$plan.BarPercent)) } else { 0 }
+    $over = $false
+    if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
+        $over = [double]$plan.Used -gt [double]$plan.Limit
+    } elseif ($hasBar) {
+        $over = [double]$plan.BarPercent -gt 100
+    }
 
-        $bar = $script:window.FindName('reqBar')
+    $bar = $script:window.FindName('reqBar')
+    $barC = $script:window.FindName('reqBarC')
+    if ($hasBar) {
         Set-BarWidth $bar ([math]::Min($script:BarTrackWidth, [math]::Round($pct / 100.0 * $script:BarTrackWidth)))
-        $barC = $script:window.FindName('reqBarC')
         Set-BarWidth $barC ([math]::Min($script:CompactBarWidth, [math]::Round($pct / 100.0 * $script:CompactBarWidth)))
-
-        $pill = $script:window.FindName('overPill')
-        if ($over) {
-            $bar.Background = New-GradientBrush '#78350F' '#FBBF24'
-            if ($barC) { $barC.Background = New-GradientBrush '#78350F' '#FBBF24' }
-            if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Visible }
-        } else {
-            $cc = if ($script:CursorColorsCur) { $script:CursorColorsCur } else { @('#065F46','#34D399') }
-            $bar.Background = New-GradientBrush $cc[0] $cc[1]
-            if ($barC) { $barC.Background = New-GradientBrush $cc[0] $cc[1] }
-            if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
-        }
-
-        $script:window.FindName('reqCount').Text = "$used / $limit"
-        $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = "$used / $limit" }
-        # billingCycleEnd is the real reset; startOfMonth is the cycle START (past) so it formats as "now"
-        $script:window.FindName('reqReset').Text = Format-Reset $script:SummaryData.billingCycleEnd
     } else {
-        Set-BarWidth ($script:window.FindName('reqBar')) 0
-        Set-BarWidth ($script:window.FindName('reqBarC')) 0
-        $script:window.FindName('reqCount').Text = '-- / --'
-        $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = '-- / --' }
-        $pill = $script:window.FindName('overPill')
+        Set-BarWidth $bar 0
+        Set-BarWidth $barC 0
+    }
+
+    $pill = $script:window.FindName('overPill')
+    if ($hasBar -and $over) {
+        if ($bar) { $bar.Background = New-GradientBrush '#78350F' '#FBBF24' }
+        if ($barC) { $barC.Background = New-GradientBrush '#78350F' '#FBBF24' }
+        if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Visible }
+    } else {
+        $cc = if ($script:CursorColorsCur) { $script:CursorColorsCur } else { @('#065F46','#34D399') }
+        if ($bar) { $bar.Background = New-GradientBrush $cc[0] $cc[1] }
+        if ($barC) { $barC.Background = New-GradientBrush $cc[0] $cc[1] }
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
     }
 
-    # On-demand spend from usage-summary
+    $countText = '-- / --'
+    if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
+        $countText = ('{0} / {1}' -f [int][math]::Round([double]$plan.Used), [int][math]::Round([double]$plan.Limit))
+    } elseif ($hasBar) {
+        $countText = ('{0}%' -f $pct)
+    }
+    $script:window.FindName('reqCount').Text = $countText
+    $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = $countText }
+    $rr = $script:window.FindName('reqReset')
+    if ($rr) {
+        $rr.Text = if ($plan.BillingCycleEnd) { Format-Reset $plan.BillingCycleEnd } else { '' }
+    }
+
+    $otherText = '--'
+    if ($null -ne $plan.ApiPercent) {
+        $otherText = ('{0:0}%' -f [double]$plan.ApiPercent)
+    }
+    foreach ($n in @('otherModelsText','otherModelsTextC')) {
+        $el = $script:window.FindName($n)
+        if ($el) { $el.Text = $otherText }
+    }
+
+    # On-demand from usage-summary (enabled + used)
     $od = $script:window.FindName('onDemandText')
     if ($od) {
         if (Test-ProviderAuthFailed $script:AuthState) {
@@ -1386,14 +1424,17 @@ function Update-CursorSection {
             $od.Text = $script:CursorErrMsg
             $od.Foreground = NewBrush '#F87171'
         } else {
-            $od.FontSize = 30
-            $sum = $script:SummaryData
-            if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
-                $cents = [double]$sum.individualUsage.onDemand.used
-                $dollars = $cents / 100.0
+            if (($null -ne $plan.OnDemandEnabled) -and (-not $plan.OnDemandEnabled)) {
+                $od.FontSize = 22
+                $od.Text = 'Off'
+                $od.Foreground = NewBrush '#5B9A80'
+            } elseif ($null -ne $plan.OnDemandUsedCents) {
+                $od.FontSize = 30
+                $dollars = [double]$plan.OnDemandUsedCents / 100.0
                 $od.Text = ('${0:N2}' -f $dollars)
                 $od.Foreground = if ($dollars -gt 0) { NewBrush '#FBBF24' } else { NewBrush '#5B9A80' }
             } else {
+                $od.FontSize = 30
                 $od.Text = '--'
                 $od.Foreground = NewBrush '#5B9A80'
             }
@@ -1421,10 +1462,12 @@ function Update-CursorSection {
     if ($uhd) {
         $sum = $script:SummaryData
         $odDollars = 0.0
-        if ($sum -and $sum.individualUsage -and $sum.individualUsage.onDemand) {
-            $odDollars = [double]$sum.individualUsage.onDemand.used / 100.0
+        $odOn = $true
+        if ($null -ne $plan.OnDemandEnabled) { $odOn = [bool]$plan.OnDemandEnabled }
+        if ($odOn -and ($null -ne $plan.OnDemandUsedCents)) {
+            $odDollars = [double]$plan.OnDemandUsedCents / 100.0
         }
-        if ($odDollars -gt 0) {
+        if ($odOn -and $odDollars -gt 0) {
             $uhd.Text = ('${0:N2}' -f $odDollars); $uhd.Foreground = NewBrush '#FBBF24'
         } elseif ($sum -and $sum.billingCycleEnd) {
             $uhd.Text = Format-Reset $sum.billingCycleEnd; $uhd.Foreground = NewBrush '#7B9EC4'
