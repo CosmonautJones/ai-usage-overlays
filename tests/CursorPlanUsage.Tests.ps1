@@ -29,6 +29,27 @@ Describe 'Get-CursorPlanUsageFromSummary' {
         $p.MembershipType | Should -Be 'pro'
     }
 
+
+    It 'Settings display message % wins over plan.autoPercentUsed (17% vs 11%)' {
+        $sum = [pscustomobject]@{
+            autoModelSelectedDisplayMessage = "You've used 17% of your included total usage"
+            namedModelSelectedDisplayMessage = "You've used 90% of your included API usage"
+            individualUsage = [pscustomobject]@{
+                plan = [pscustomobject]@{
+                    used = 2000
+                    limit = 2000
+                    autoPercentUsed = 10.88
+                    apiPercentUsed = 89.9
+                }
+                onDemand = [pscustomobject]@{ enabled = $false; used = 0 }
+            }
+        }
+        $p = Get-CursorPlanUsageFromSummary $sum
+        $p.AutoPercent | Should -Be 17
+        $p.ApiPercent | Should -Be 90
+        $p.BarPercent | Should -Be 17
+        Format-CursorPlanCountText $p | Should -Be '17%'
+    }
     It 'falls back to display-message percents when plan percents are absent' {
         $sum = [pscustomobject]@{
             autoModelSelectedDisplayMessage = "You've used 1% of your included total usage"
