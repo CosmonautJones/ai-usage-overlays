@@ -1609,6 +1609,8 @@ function Update-AllSections {
     Update-CursorSection
     Update-GrokSection
 
+    if (Get-Command Sync-CompactModeBodies -ErrorAction SilentlyContinue) { Sync-CompactModeBodies }
+
     # NOTE: Resize-ToContent is deliberately NOT called here. This runs on the
     # 30s tick timer, and a full-tree Measure every 30s is wasted work (content
     # height only changes on the 180s data poll or a section toggle). Callers

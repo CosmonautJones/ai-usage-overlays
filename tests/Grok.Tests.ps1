@@ -54,9 +54,9 @@ Describe 'ConvertFrom-GrokBillingResponse' {
         $parsed = ConvertFrom-GrokBillingResponse $obj
         $parsed.WeekPct | Should -Be 47
         $parsed.PrepaidBalance | Should -Be '0.00'
-        $parsed.ProductUsageText | Should -Match 'GrokChat 20'
-        $parsed.ProductUsageText | Should -Match 'GrokBuild 19'
-        $parsed.ProductUsageText | Should -Match 'GrokImagine 1'
+        $parsed.ProductUsageText | Should -Match 'GrokChat 20%'
+        $parsed.ProductUsageText | Should -Match 'GrokBuild 19%'
+        $parsed.ProductUsageText | Should -Match 'GrokImagine 1%'
     }
 
     It 'Convert-GrokPrepaidText accepts val note' {
@@ -207,3 +207,27 @@ Describe 'Get-GrokLiveUsage auth reporting' {
         $script:GrokErrMsg | Should -Not -Match 'Bearer'
     }
 }
+
+Describe 'Format-GrokProductUsage' {
+    It 'formats usagePercent chips as Name N% without dumping prop names' {
+        $usage = @(
+            [pscustomobject]@{ product = 'GrokChat'; usagePercent = 20 }
+            [pscustomobject]@{ product = 'GrokBuild'; usagePercent = 5 }
+            [pscustomobject]@{ product = 'GrokImagine'; usagePercent = 1 }
+        )
+        $text = Format-GrokProductUsage $usage
+        $text | Should -Be 'GrokChat 20% | GrokBuild 5% | GrokImagine 1%'
+        $text | Should -Not -Match 'usagePercent'
+    }
+
+    It 'formats shorthand product notes as percent chips' {
+        $text = Format-GrokProductUsage @(
+            [pscustomobject]@{ GrokChat = 20 }
+            [pscustomobject]@{ GrokBuild = 19 }
+        )
+        $text | Should -Match 'GrokChat 20%'
+        $text | Should -Match 'GrokBuild 19%'
+        $text | Should -Not -Match 'usagePercent'
+    }
+}
+
