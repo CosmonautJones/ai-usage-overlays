@@ -743,11 +743,16 @@ function Check-Alert([string]$key, $util, $resetAt = $null) {
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
-[void]$script:ctxStrip.Items.Add((New-StripItem 'Set footer brand…' { Invoke-SetFooterBrand }))
-[void]$script:ctxStrip.Items.Add((New-StripItem 'Reset TravOS mark' { Invoke-ResetFooterBrand }))
 Add-Separator
 
-# Updates
+# Brand (footer mark) - submenu keeps the strip short
+$miBrand = New-StripItem 'Brand' $null
+[void]$miBrand.DropDownItems.Add((New-StripItem 'Set footer brand…' { Invoke-SetFooterBrand }))
+[void]$miBrand.DropDownItems.Add((New-StripItem 'Reset TravOS mark' { Invoke-ResetFooterBrand }))
+[void]$script:ctxStrip.Items.Add($miBrand)
+
+# Updates - submenu shortens the strip before Log in
+$miUpdates = New-StripItem 'Updates' $null
 $miAutoUpdate = New-StripItem 'Automatically check for updates' {
     $script:Cfg.AutoCheckUpdates = -not [bool]$script:Cfg.AutoCheckUpdates
     $miAutoUpdate.Checked = [bool]$script:Cfg.AutoCheckUpdates
@@ -767,21 +772,22 @@ $miAutoUpdate = New-StripItem 'Automatically check for updates' {
 $miAutoUpdate.CheckOnClick = $false
 $miAutoUpdate.Checked = [bool]$script:Cfg.AutoCheckUpdates
 $script:updateItems['auto'] = $miAutoUpdate
-[void]$script:ctxStrip.Items.Add($miAutoUpdate)
+[void]$miUpdates.DropDownItems.Add($miAutoUpdate)
 
 $miCheckUpdate = New-StripItem 'Check for updates' { Invoke-ManualUpdateCheck }
 $script:updateItems['check'] = $miCheckUpdate
-[void]$script:ctxStrip.Items.Add($miCheckUpdate)
+[void]$miUpdates.DropDownItems.Add($miCheckUpdate)
 
 $miInstallUpdate = New-StripItem 'Install update' { Invoke-InstallCheckedUpdate }
 $miInstallUpdate.Enabled = $false
 $script:updateItems['install'] = $miInstallUpdate
-[void]$script:ctxStrip.Items.Add($miInstallUpdate)
+[void]$miUpdates.DropDownItems.Add($miInstallUpdate)
 
 $miUpdateStatus = New-StripItem 'Update status: unknown' $null
 $miUpdateStatus.Enabled = $false
 $script:updateItems['status'] = $miUpdateStatus
-[void]$script:ctxStrip.Items.Add($miUpdateStatus)
+[void]$miUpdates.DropDownItems.Add($miUpdateStatus)
+[void]$script:ctxStrip.Items.Add($miUpdates)
 Sync-UpdateMenuItems
 Add-Separator
 

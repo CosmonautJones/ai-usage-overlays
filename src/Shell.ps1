@@ -555,15 +555,7 @@ $xaml = @'
           <StackPanel x:Name="cursorBody">
            <StackPanel x:Name="cursorFull">
 
-            <!-- ON-DEMAND HERO -->
-            <StackPanel Margin="0,0,0,10">
-              <TextBlock x:Name="onDemandLabel" Text="ON-DEMAND THIS CYCLE"
-                         Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold" Margin="0,0,0,2"/>
-              <TextBlock x:Name="onDemandText" Text="--"
-                         Foreground="#FBBF24" FontSize="30" FontFamily="Bahnschrift Bold"/>
-            </StackPanel>
-
-            <!-- Included Requests -->
+            <!-- Cursor Models (plan %) — primary, Codex-style -->
             <StackPanel Margin="0,0,0,10">
               <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
@@ -616,7 +608,22 @@ $xaml = @'
               </Grid>
             </StackPanel>
 
-            <!-- Local stats -->
+            <!-- Local analytics (hidden when get-user-analytics / LocalData is null) -->
+
+            <!-- On-demand secondary (Off / $) — not the hero when plan matters -->
+            <StackPanel x:Name="onDemandRow" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
+                           Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="onDemandText" Grid.Column="1" Text="--"
+                           Foreground="#5B9A80" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
+              </Grid>
+            </StackPanel>
+
+            <StackPanel x:Name="cursorAnalyticsBlock" Visibility="Collapsed">
             <Grid Margin="0,0,0,5">
               <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock x:Name="editsLabel" Grid.Column="0" Text="AGENT EDITS"
@@ -641,6 +648,7 @@ $xaml = @'
                          Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock x:Name="cursorSessText" Grid.Column="1" Text="--" Foreground="#94A3B8" FontSize="14" FontFamily="Consolas"/>
             </Grid>
+            </StackPanel>
            </StackPanel>
            <!-- ===== CURSOR compact (single-line) ===== -->
            <StackPanel x:Name="cursorCompact" Visibility="Collapsed">
@@ -727,9 +735,9 @@ $xaml = @'
             </StackPanel>
             <Grid Margin="0,0,0,2">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="PLAN" Foreground="#7BA8C8"
+              <TextBlock Grid.Column="0" Text="USAGE" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
+              <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas" TextWrapping="Wrap"/>
             </Grid>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1307,12 +1315,29 @@ function Set-SectionAuthError {
     return $false
 }
 
+function Get-OverlayStatNote {
+    # Hashtable and PSCustomObject note reader; keeps 0% distinct from missing.
+    param($Obj, [string]$Name)
+    if ($null -eq $Obj -or -not $Name) { return $null }
+    if ($Obj -is [System.Collections.IDictionary]) {
+        if ($Obj.Contains($Name)) { return $Obj[$Name] }
+        foreach ($k in @($Obj.Keys)) {
+            if ([string]$k -eq $Name) { return $Obj[$k] }
+        }
+        return $null
+    }
+    if ($Obj.PSObject -and $Obj.PSObject.Properties[$Name]) {
+        return $Obj.PSObject.Properties[$Name].Value
+    }
+    return $null
+}
+
 function Update-CodexSection {
     Set-SectionAuthError 'codexErrText' $script:CodexAuthState $script:CodexErrMsg | Out-Null
 
     $s = $script:CodexStats
     if (-not $s) {
-        foreach ($n in @('codexFivehRow','codexFivehRowC')) {
+        foreach ($n in @('codexFivehRow','codexFivehRowC','codexFivehSparkRow','codexFivehSparkRowC')) {
             $el = $script:window.FindName($n); if ($el) { $el.Visibility = [System.Windows.Visibility]::Collapsed }
         }
         Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
@@ -1328,24 +1353,30 @@ function Update-CodexSection {
         $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = '' }
         return
     }
-    $fivehVis = if ($null -ne $s.FiveHourPct) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+    $fiveHourPct = Get-OverlayStatNote $s 'FiveHourPct'
+    $fiveHourResetsAt = Get-OverlayStatNote $s 'FiveHourResetsAt'
+    $weekPct = Get-OverlayStatNote $s 'WeekPct'
+    $weekResetsAt = Get-OverlayStatNote $s 'WeekResetsAt'
+    $fivehVis = if ($null -ne $fiveHourPct) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
     foreach ($n in @('codexFivehRow','codexFivehRowC')) {
         $el = $script:window.FindName($n); if ($el) { $el.Visibility = $fivehVis }
     }
-    if ($null -ne $s.FiveHourPct) {
-        Set-SectionBar 'codexFivehBar' 'codexFivehPct' 'codexFivehSub' 'codexFivehReset' $s.FiveHourPct $s.FiveHourResetsAt
-        Set-CompactBar 'codexFivehBarC' 'codexFivehPctC' $s.FiveHourPct
+    if ($null -ne $fiveHourPct) {
+        Set-SectionBar 'codexFivehBar' 'codexFivehPct' 'codexFivehSub' 'codexFivehReset' $fiveHourPct $fiveHourResetsAt
+        Set-CompactBar 'codexFivehBarC' 'codexFivehPctC' $fiveHourPct
         Set-Spark 'codexFivehSpark' 'codexFivehSparkCanvas' 'codex_five_hour' 'codexFivehSparkRow'
         Set-Spark 'codexFivehSparkC' 'codexFivehSparkCanvasC' 'codex_five_hour' 'codexFivehSparkRowC'
     } else {
-        Set-Spark 'codexFivehSpark' 'codexFivehSparkCanvas' 'codex_five_hour' 'codexFivehSparkRow'
-        Set-Spark 'codexFivehSparkC' 'codexFivehSparkCanvasC' 'codex_five_hour' 'codexFivehSparkRowC'
+        # No live 5h window: hide spark rows even if history still has samples.
+        foreach ($n in @('codexFivehSparkRow','codexFivehSparkRowC')) {
+            $el = $script:window.FindName($n); if ($el) { $el.Visibility = [System.Windows.Visibility]::Collapsed }
+        }
     }
-    Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $s.WeekPct $s.WeekResetsAt
-    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $s.WeekPct
+    Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $weekPct $weekResetsAt
+    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $weekPct
     Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
     Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
-    $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $s.WeekResetsAt }
+    $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $weekResetsAt }
     $codexResetsText = $script:window.FindName('codexResetsText')
     if ($codexResetsText) {
         if ($null -ne $s.ResetsAvailable) {
@@ -1380,16 +1411,28 @@ function Update-GrokSection {
         $hd = $script:window.FindName('grokHeaderDetail'); if ($hd) { $hd.Text = '' }
         return
     }
-    Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $s.WeekPct $s.WeekResetsAt
-    Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $s.WeekPct
+    $weekPct = Get-OverlayStatNote $s 'WeekPct'
+    $weekResetsAt = Get-OverlayStatNote $s 'WeekResetsAt'
+    $prepaid = Get-OverlayStatNote $s 'PrepaidBalance'
+    $productText = Get-OverlayStatNote $s 'ProductUsageText'
+    $planType = Get-OverlayStatNote $s 'PlanType'
+    Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $weekPct $weekResetsAt
+    Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $weekPct
     Set-Spark 'grokWeekSpark' 'grokWeekSparkCanvas' 'grok_seven_day' 'grokWeekSparkRow'
     Set-Spark 'grokWeekSparkC' 'grokWeekSparkCanvasC' 'grok_seven_day' 'grokWeekSparkRowC'
     $hd = $script:window.FindName('grokHeaderDetail')
-    if ($hd) { $hd.Text = Format-Reset $s.WeekResetsAt }
+    if ($hd) { $hd.Text = Format-Reset $weekResetsAt }
     $pt = $script:window.FindName('grokPlanText')
-    if ($pt) { $pt.Text = if ($s.PlanType) { [string]$s.PlanType } else { '--' } }
+    if ($pt) {
+        if ($productText) { $pt.Text = [string]$productText }
+        elseif ($planType) { $pt.Text = [string]$planType }
+        else { $pt.Text = '--' }
+    }
     $pp = $script:window.FindName('grokPrepaidText')
-    if ($pp) { $pp.Text = if ($s.PrepaidBalance) { [string]$s.PrepaidBalance } else { '--' } }
+    if ($pp) {
+        # Show 0.00 prepaid; only blank when the field is absent.
+        $pp.Text = if ($null -ne $prepaid -and [string]$prepaid -ne '') { [string]$prepaid } else { '--' }
+    }
 }
 
 function Update-CursorSection {
@@ -1398,11 +1441,12 @@ function Update-CursorSection {
     $plan = Get-CursorPlanUsageFromSummary $script:SummaryData
     $hasBar = ($null -ne $plan.BarPercent)
     $pct = if ($hasBar) { [math]::Min(100, [math]::Round([double]$plan.BarPercent)) } else { 0 }
+    # Prefer bar % for overage so a mismatched used/limit (e.g. 2000/2000) does not flash "over".
     $over = $false
-    if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
-        $over = [double]$plan.Used -gt [double]$plan.Limit
-    } elseif ($hasBar) {
+    if ($hasBar) {
         $over = [double]$plan.BarPercent -gt 100
+    } elseif (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
+        $over = [double]$plan.Used -gt [double]$plan.Limit
     }
 
     $bar = $script:window.FindName('reqBar')
@@ -1427,12 +1471,7 @@ function Update-CursorSection {
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
     }
 
-    $countText = '-- / --'
-    if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
-        $countText = ('{0} / {1}' -f [int][math]::Round([double]$plan.Used), [int][math]::Round([double]$plan.Limit))
-    } elseif ($hasBar) {
-        $countText = ('{0}%' -f $pct)
-    }
+    $countText = Format-CursorPlanCountText $plan
     $script:window.FindName('reqCount').Text = $countText
     $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = $countText }
     $rr = $script:window.FindName('reqReset')
@@ -1457,35 +1496,42 @@ function Update-CursorSection {
             $od.Text = $script:CursorErrMsg
             $od.Foreground = NewBrush '#F87171'
         } else {
+            $od.FontSize = 12
             if (($null -ne $plan.OnDemandEnabled) -and (-not $plan.OnDemandEnabled)) {
-                $od.FontSize = 22
                 $od.Text = 'Off'
                 $od.Foreground = NewBrush '#5B9A80'
             } elseif ($null -ne $plan.OnDemandUsedCents) {
-                $od.FontSize = 30
                 $dollars = [double]$plan.OnDemandUsedCents / 100.0
                 $od.Text = ('${0:N2}' -f $dollars)
                 $od.Foreground = if ($dollars -gt 0) { NewBrush '#FBBF24' } else { NewBrush '#5B9A80' }
             } else {
-                $od.FontSize = 30
                 $od.Text = '--'
                 $od.Foreground = NewBrush '#5B9A80'
             }
         }
     }
 
-    # Edit/model stats from the Cursor analytics API (30-day rolling window)
+    # Edit/model stats from the Cursor analytics API (30-day rolling window).
+    # When LocalData is null (405/403), hide the whole block so compact/full
+    # are not a wall of "--".
     $l = $script:LocalData
+    $analytics = $script:window.FindName('cursorAnalyticsBlock')
     if ($l) {
-        $script:window.FindName('editsText').Text = ('{0} (30d)' -f (Fmt-Num $l.edits30d))
-        $script:window.FindName('cursorTodayText').Text = ('{0} edits' -f (Fmt-Num $l.editsToday))
-        if ($l.topModel) {
-            $mn = $l.topModel -replace 'claude-','cl-' -replace 'composer-','cmp-' -replace '-latest',''
-            $script:window.FindName('cursorModelText').Text = "$mn ($($l.topPct)%)"
-        } else {
-            $script:window.FindName('cursorModelText').Text = '--'
+        if ($analytics) { $analytics.Visibility = [System.Windows.Visibility]::Visible }
+        $et = $script:window.FindName('editsText'); if ($et) { $et.Text = ('{0} (30d)' -f (Fmt-Num $l.edits30d)) }
+        $ct = $script:window.FindName('cursorTodayText'); if ($ct) { $ct.Text = ('{0} edits' -f (Fmt-Num $l.editsToday)) }
+        $cm = $script:window.FindName('cursorModelText')
+        if ($cm) {
+            if ($l.topModel) {
+                $mn = $l.topModel -replace 'claude-','cl-' -replace 'composer-','cmp-' -replace '-latest',''
+                $cm.Text = "$mn ($($l.topPct)%)"
+            } else {
+                $cm.Text = '--'
+            }
         }
-        $script:window.FindName('cursorSessText').Text  = ('{0} lines' -f (Fmt-Num $l.linesAccepted))
+        $cs = $script:window.FindName('cursorSessText'); if ($cs) { $cs.Text = ('{0} lines' -f (Fmt-Num $l.linesAccepted)) }
+    } else {
+        if ($analytics) { $analytics.Visibility = [System.Windows.Visibility]::Collapsed }
     }
 
     # Compact header detail: on-demand cost takes over (amber) the moment Cursor
@@ -1562,6 +1608,8 @@ function Update-AllSections {
     Update-CodexSection
     Update-CursorSection
     Update-GrokSection
+
+    if (Get-Command Sync-CompactModeBodies -ErrorAction SilentlyContinue) { Sync-CompactModeBodies }
 
     # NOTE: Resize-ToContent is deliberately NOT called here. This runs on the
     # 30s tick timer, and a full-tree Measure every 30s is wasted work (content

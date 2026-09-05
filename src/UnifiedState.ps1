@@ -159,6 +159,22 @@ function Load-UnifiedState {
     }
 }
 
+function Sync-CompactModeBodies {
+    # Full vs Compact must be exclusive Collapsed/Visible so large % labels
+    # cannot ghost under the other mode (Hidden still participates in hit-test/layout).
+    if (-not $script:window -or -not $script:Cfg) { return }
+    $compact = [bool]$script:Cfg.Compact
+    $vFull = if ($compact) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
+    $vComp = if ($compact) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+    foreach ($sec in $script:UnifiedSectionKeys) {
+        $full = $script:window.FindName($sec + 'Full')
+        if ($full) { $full.Visibility = $vFull }
+        $comp = $script:window.FindName($sec + 'Compact')
+        if ($comp) { $comp.Visibility = $vComp }
+        $hd = $script:window.FindName($sec + 'HeaderDetail')
+        if ($hd) { $hd.Visibility = $vComp }
+    }
+}
 function Apply-UnifiedSettings {
     Initialize-UnifiedCfg
 
@@ -185,14 +201,7 @@ function Apply-UnifiedSettings {
         }
 
         # Compact mode: swap each section's Full body for its single-line Compact body.
-        $compact = [bool]$script:Cfg.Compact
-        $vFull = if ($compact) { [System.Windows.Visibility]::Collapsed } else { [System.Windows.Visibility]::Visible }
-        $vComp = if ($compact) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
-        foreach ($sec in $script:UnifiedSectionKeys) {
-            $full = $script:window.FindName($sec + 'Full');    if ($full) { $full.Visibility = $vFull }
-            $comp = $script:window.FindName($sec + 'Compact'); if ($comp) { $comp.Visibility = $vComp }
-            $hd   = $script:window.FindName($sec + 'HeaderDetail'); if ($hd) { $hd.Visibility = $vComp }
-        }
+        Sync-CompactModeBodies
     }
 
     foreach ($key in $script:UnifiedSectionKeys) {

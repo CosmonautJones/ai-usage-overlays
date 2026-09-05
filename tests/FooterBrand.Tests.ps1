@@ -43,16 +43,29 @@ Describe 'Tray-discoverable footer brand' {
         $script:Tray = Get-Content (Join-Path $root 'src\UnifiedTray.ps1') -Raw -Encoding UTF8
     }
 
-    It 'exposes Set footer brand and Reset TravOS mark tray actions' {
+    It 'exposes Set footer brand and Reset TravOS mark under Brand submenu' {
         $script:Shell | Should -Match 'function Invoke-SetFooterBrand'
         $script:Shell | Should -Match 'function Invoke-ResetFooterBrand'
         $script:Shell | Should -Match 'OpenFileDialog'
         $script:Shell | Should -Match 'Copy-Item'
         $script:Shell | Should -Match 'Remove-Item'
+        $script:Tray | Should -Match "New-StripItem 'Brand'"
         $script:Tray | Should -Match 'Set footer brand'
         $script:Tray | Should -Match 'Reset TravOS mark'
         $script:Tray | Should -Match 'Invoke-SetFooterBrand'
         $script:Tray | Should -Match 'Invoke-ResetFooterBrand'
+        ($script:Tray -split "`n" | Where-Object { $_ -match "ctxStrip\.Items\.Add\(\(New-StripItem 'Set footer brand" }).Count | Should -Be 0
+    }
+
+    It 'folds update items under Updates submenu' {
+        $script:Tray | Should -Match "New-StripItem 'Updates'"
+        $script:Tray | Should -Match "New-StripItem 'Automatically check for updates'"
+        $script:Tray | Should -Match "New-StripItem 'Check for updates'"
+        $start = $script:Tray.IndexOf("New-StripItem 'Updates'")
+        $start | Should -BeGreaterThan 0
+        $chunk = $script:Tray.Substring($start, [Math]::Min(1200, $script:Tray.Length - $start))
+        $chunk | Should -Match 'DropDownItems\.Add\(\$miAutoUpdate\)'
+        $chunk | Should -Match 'DropDownItems\.Add\(\$miCheckUpdate\)'
     }
 
     It 'still uses the documented LOCALAPPDATA brand.png drop path' {

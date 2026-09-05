@@ -36,7 +36,8 @@ function Get-CursorDisplayMessagePercent([string]$Message) {
 
 function Get-CursorPlanUsageFromSummary($Summary = $script:SummaryData) {
     # Plan & Usage pools from usage-summary (Settings: Cursor Models / Other Models).
-    # Never invent 0 from missing fields. Prefer numeric plan.* over display-message parse.
+    # Never invent 0 from missing fields. Settings display-message % wins when present
+    # (matches what Cursor Settings shows); fall back to plan.autoPercentUsed / apiPercentUsed.
     $used = $null; $limit = $null; $autoPct = $null; $apiPct = $null
     $odEnabled = $null; $odUsedCents = $null
 
@@ -46,14 +47,18 @@ function Get-CursorPlanUsageFromSummary($Summary = $script:SummaryData) {
         if ($plan) {
             $used = ConvertTo-CursorSummaryMetric $plan.used
             $limit = ConvertTo-CursorSummaryMetric $plan.limit
+        }
+        $msgAuto = Get-CursorDisplayMessagePercent ([string]$Summary.autoModelSelectedDisplayMessage)
+        $msgApi  = Get-CursorDisplayMessagePercent ([string]$Summary.namedModelSelectedDisplayMessage)
+        if ($null -ne $msgAuto) {
+            $autoPct = $msgAuto
+        } elseif ($plan) {
             $autoPct = ConvertTo-CursorSummaryMetric $plan.autoPercentUsed
+        }
+        if ($null -ne $msgApi) {
+            $apiPct = $msgApi
+        } elseif ($plan) {
             $apiPct = ConvertTo-CursorSummaryMetric $plan.apiPercentUsed
-        }
-        if ($null -eq $autoPct) {
-            $autoPct = Get-CursorDisplayMessagePercent ([string]$Summary.autoModelSelectedDisplayMessage)
-        }
-        if ($null -eq $apiPct) {
-            $apiPct = Get-CursorDisplayMessagePercent ([string]$Summary.namedModelSelectedDisplayMessage)
         }
         if ($Summary.individualUsage -and $Summary.individualUsage.onDemand) {
             $od = $Summary.individualUsage.onDemand
@@ -81,6 +86,38 @@ function Get-CursorPlanUsageFromSummary($Summary = $script:SummaryData) {
         BillingCycleEnd = if ($Summary) { $Summary.billingCycleEnd } else { $null }
     }
 }
+
+
+function Format-CursorPlanCountText {
+    # Settings-faithful plan label for the Models bar.
+    # Lead with Settings-faithful BarPercent. Show used/limit only when that
+    # ratio agrees with the bar % (within 2 pts); otherwise % wins so a
+    # mismatched 2000/2000 never fights a ~10% Settings bar.
+    param($Plan)
+
+    if ($null -eq $Plan) { return '--' }
+
+    $hasBar = ($null -ne $Plan.BarPercent)
+    $pct = $null
+    if ($hasBar) {
+        $pct = [int][math]::Min(100, [math]::Round([double]$Plan.BarPercent))
+    }
+
+    $hasUL = ($null -ne $Plan.Used) -and ($null -ne $Plan.Limit) -and ([double]$Plan.Limit -gt 0)
+    if ($hasUL -and $hasBar) {
+        $fromUL = [int][math]::Min(100, [math]::Round(([double]$Plan.Used / [double]$Plan.Limit) * 100.0))
+        if ([math]::Abs($fromUL - $pct) -le 2) {
+            return ('{0} / {1}' -f [int][math]::Round([double]$Plan.Used), [int][math]::Round([double]$Plan.Limit))
+        }
+        return ('{0}%' -f $pct)
+    }
+    if ($hasBar) { return ('{0}%' -f $pct) }
+    if ($hasUL) {
+        return ('{0} / {1}' -f [int][math]::Round([double]$Plan.Used), [int][math]::Round([double]$Plan.Limit))
+    }
+    return '--'
+}
+
 
 
 # ---------------------------------------------------------------------------
