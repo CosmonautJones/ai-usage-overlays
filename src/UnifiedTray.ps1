@@ -739,6 +739,8 @@ function Check-Alert([string]$key, $util, $resetAt = $null) {
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Set footer brand…' { Invoke-SetFooterBrand }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Reset TravOS mark' { Invoke-ResetFooterBrand }))
 Add-Separator
 
 # Updates
