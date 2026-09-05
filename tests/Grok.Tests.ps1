@@ -216,7 +216,7 @@ Describe 'Format-GrokProductUsage' {
             [pscustomobject]@{ product = 'GrokImagine'; usagePercent = 1 }
         )
         $text = Format-GrokProductUsage $usage
-        $text | Should -Be 'GrokChat 20% | GrokBuild 5% | GrokImagine 1%'
+        $text | Should -Be (@('GrokChat 20%', 'GrokBuild 5%', 'GrokImagine 1%') -join [Environment]::NewLine)
         $text | Should -Not -Match 'usagePercent'
     }
 

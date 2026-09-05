@@ -78,9 +78,12 @@ Describe 'Cursor Plan & Usage HUD wiring' {
         $script:Shell = Get-Content (Join-Path $root 'src\Shell.ps1') -Raw -Encoding UTF8
         $script:History = Get-Content (Join-Path $root 'src\History.ps1') -Raw -Encoding UTF8
     }
-    It 'labels Cursor Models and Other Models and paints from summary helper' {
-        $script:Shell | Should -Match 'CURSOR MODELS'
-        $script:Shell | Should -Match 'OTHER MODELS'
+    It 'labels MODELS / OTHER Codex-clean and paints from summary helper' {
+        $script:Shell | Should -Match 'Text="MODELS"'
+        $script:Shell | Should -Match 'Text="OTHER"'
+        $script:Shell | Should -Not -Match 'CURSOR MODELS'
+        $script:Shell | Should -Not -Match 'OTHER MODELS'
+        $script:Shell | Should -Match 'reqSub'
         $script:Shell | Should -Match 'Get-CursorPlanUsageFromSummary'
         $script:Shell | Should -Match 'Do not paint from legacy usage'
         $script:Shell | Should -Not -Match "\$d\.'gpt-4'"
@@ -134,7 +137,8 @@ Describe 'Cursor clarity HUD wiring' {
     It 'paints Models count via Format-CursorPlanCountText and keeps on-demand secondary' {
         $script:Shell | Should -Match 'Format-CursorPlanCountText'
         $script:Shell | Should -Match 'onDemandRow'
-        $script:Shell | Should -Match 'Cursor Models \(plan %\)'
+        $script:Shell | Should -Match 'MODELS \(plan %\)'
+        $script:Shell | Should -Match 'reqSub'
         $script:Shell | Should -Not -Match '<!-- ON-DEMAND HERO'
         $script:Shell | Should -Match 'Prefer bar % for overage'
     }
