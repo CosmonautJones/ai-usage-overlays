@@ -200,6 +200,10 @@ function Invoke-ManualRefresh {
     }
 
     Update-AllSections
+    # Hand-drop brand.png paints on Refresh without Set / theme / restart.
+    if (Get-Command Apply-FooterBrandMark -ErrorAction SilentlyContinue) {
+        Apply-FooterBrandMark
+    }
 }
 
 # ---------------------------------------------------------------------------

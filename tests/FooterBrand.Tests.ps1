@@ -59,4 +59,13 @@ Describe 'Tray-discoverable footer brand' {
         $script:Shell | Should -Match 'AIUsageOverlay\\brand\.png'
         $script:Shell | Should -Match 'Apply-FooterBrandMark'
     }
+
+    It 'Refresh applies footer brand so hand-drop paints without restart' {
+        $script:Tray | Should -Match 'function Invoke-ManualRefresh'
+        $start = $script:Tray.IndexOf('function Invoke-ManualRefresh {')
+        $end = $script:Tray.IndexOf("`nfunction ", $start + 10)
+        if ($end -lt 0) { $end = $script:Tray.Length }
+        $fn = $script:Tray.Substring($start, $end - $start)
+        $fn | Should -Match 'Apply-FooterBrandMark'
+    }
 }
