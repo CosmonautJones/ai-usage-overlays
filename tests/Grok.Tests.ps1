@@ -36,6 +36,44 @@ Describe 'ConvertFrom-GrokBillingResponse' {
         $parsed.PrepaidBalance | Should -Be '12.50'
     }
 
+
+    It 'reads prepaidBalance and productUsage from config (live billing shape)' {
+        $obj = [pscustomobject]@{
+            config = [pscustomobject]@{
+                creditUsagePercent = 47
+                prepaidBalance = [pscustomobject]@{ val = 0 }
+                productUsage = @(
+                    [pscustomobject]@{ GrokChat = 20 }
+                    [pscustomobject]@{ GrokBuild = 19 }
+                    [pscustomobject]@{ GrokAppBuilder = 7 }
+                    [pscustomobject]@{ GrokImagine = 1 }
+                )
+            }
+        }
+
+        $parsed = ConvertFrom-GrokBillingResponse $obj
+        $parsed.WeekPct | Should -Be 47
+        $parsed.PrepaidBalance | Should -Be '0.00'
+        $parsed.ProductUsageText | Should -Match 'GrokChat 20'
+        $parsed.ProductUsageText | Should -Match 'GrokBuild 19'
+        $parsed.ProductUsageText | Should -Match 'GrokImagine 1'
+    }
+
+    It 'Convert-GrokPrepaidText accepts val note' {
+        Convert-GrokPrepaidText ([pscustomobject]@{ val = 12.5 }) | Should -Be '12.50'
+        Convert-GrokPrepaidText @{ val = 0 } | Should -Be '0.00'
+    }
+
+    It 'still reads top-level prepaidBalance for older payloads' {
+        $obj = [pscustomobject]@{
+            config = [pscustomobject]@{ creditUsagePercent = 10 }
+            prepaidBalance = 3
+            productUsage = @([pscustomobject]@{ product = 'GrokChat'; count = 2 })
+        }
+        $parsed = ConvertFrom-GrokBillingResponse $obj
+        $parsed.PrepaidBalance | Should -Be '3.00'
+        $parsed.ProductUsageText | Should -Match 'GrokChat'
+    }
     It 'tolerates missing optional fields' {
         $parsed = ConvertFrom-GrokBillingResponse ([pscustomobject]@{})
         $parsed.WeekPct | Should -BeNullOrEmpty

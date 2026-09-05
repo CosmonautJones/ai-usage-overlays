@@ -142,8 +142,17 @@ function Convert-GrokPrepaidText {
         try { return ('{0:N2}' -f [double]$Value) } catch { return [string]$Value }
     }
 
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($name in @('val', 'amount', 'balance', 'credits', 'remaining', 'value')) {
+            if ($Value.Contains($name) -and $null -ne $Value[$name]) {
+                try { return ('{0:N2}' -f [double]$Value[$name]) } catch { return [string]$Value[$name] }
+            }
+        }
+        return $null
+    }
+
     $amount = $null
-    foreach ($name in @('amount', 'balance', 'credits', 'remaining', 'value')) {
+    foreach ($name in @('val', 'amount', 'balance', 'credits', 'remaining', 'value')) {
         $prop = $Value.PSObject.Properties[$name]
         if ($prop -and $null -ne $prop.Value) {
             $amount = $prop.Value
@@ -152,6 +161,45 @@ function Convert-GrokPrepaidText {
     }
     if ($null -eq $amount) { return $null }
     try { return ('{0:N2}' -f [double]$amount) } catch { return [string]$amount }
+}
+
+function Format-GrokProductUsage {
+    param($Usage)
+
+    if ($null -eq $Usage) { return $null }
+
+    $parts = [System.Collections.Generic.List[string]]::new()
+    $items = if ($Usage -is [System.Collections.IEnumerable] -and $Usage -isnot [string]) { @($Usage) } else { @($Usage) }
+    foreach ($item in $items) {
+        if ($null -eq $item) { continue }
+        if ($item -is [System.Collections.IDictionary]) {
+            foreach ($k in @($item.Keys)) {
+                if ($null -eq $item[$k]) { continue }
+                [void]$parts.Add(('{0} {1}' -f $k, $item[$k]))
+            }
+            continue
+        }
+        if ($item.PSObject) {
+            $named = $null
+            $qty = $null
+            foreach ($prop in $item.PSObject.Properties) {
+                if ($prop.Name -in @('product', 'name')) { $named = [string]$prop.Value; continue }
+                if ($prop.Name -in @('count', 'usage', 'credits', 'val', 'value', 'amount') -and $null -ne $prop.Value) {
+                    $qty = $prop.Value
+                    continue
+                }
+                if ($null -ne $prop.Value -and $prop.Value -is [ValueType]) {
+                    [void]$parts.Add(('{0} {1}' -f $prop.Name, $prop.Value))
+                }
+            }
+            if ($named) {
+                $suffix = if ($null -ne $qty) { " $qty" } else { '' }
+                [void]$parts.Add("$named$suffix")
+            }
+        }
+    }
+    if ($parts.Count -eq 0) { return $null }
+    return ($parts -join ' · ')
 }
 
 function Convert-GrokPlanType {
@@ -170,6 +218,7 @@ function Convert-GrokPlanType {
     }
 
     $usage = $Obj.productUsage
+    if (-not $usage -and $Obj.config) { $usage = $Obj.config.productUsage }
     if ($usage) {
         if ($usage -is [System.Collections.IEnumerable] -and $usage -isnot [string]) {
             foreach ($item in @($usage)) {
@@ -201,12 +250,24 @@ function ConvertFrom-GrokBillingResponse($obj) {
         }
     }
 
+    $prepaidRaw = $null
+    $productRaw = $null
+    if ($cfg) {
+        $prepaidRaw = Get-GrokNoteValue $cfg 'prepaidBalance'
+        $productRaw = Get-GrokNoteValue $cfg 'productUsage'
+    }
+    if ($null -eq $prepaidRaw) { $prepaidRaw = Get-GrokNoteValue $obj 'prepaidBalance' }
+    if ($null -eq $productRaw) { $productRaw = Get-GrokNoteValue $obj 'productUsage' }
+
+    $productText = Format-GrokProductUsage $productRaw
+
     return @{
-        WeekPct         = $weekPct
-        WeekResetsAt    = $weekResetsAt
-        PrepaidBalance  = Convert-GrokPrepaidText $obj.prepaidBalance
-        ProductUsage    = $obj.productUsage
-        PlanType        = Convert-GrokPlanType $obj
+        WeekPct           = $weekPct
+        WeekResetsAt      = $weekResetsAt
+        PrepaidBalance    = Convert-GrokPrepaidText $prepaidRaw
+        ProductUsage      = $productRaw
+        ProductUsageText  = $productText
+        PlanType          = Convert-GrokPlanType $obj
     }
 }
 
