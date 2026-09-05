@@ -182,13 +182,13 @@ function Format-GrokProductChip {
 }
 
 function Format-GrokProductUsage {
-    # Chips like "GrokChat 20% | GrokBuild 5%". usagePercent is a qty on a named
-    # product — never emit prop names like "usagePercent 20".
+    # Stacked chips "GrokChat 20%\nGrokBuild 5%" (not a wrapping one-liner).
+    # usagePercent is a qty on a named product — never emit "usagePercent 20".
     param($Usage)
 
     if ($null -eq $Usage) { return $null }
 
-    $sep = ' | '
+    $sep = [Environment]::NewLine
     $parts = [System.Collections.Generic.List[string]]::new()
     $items = if ($Usage -is [System.Collections.IEnumerable] -and $Usage -isnot [string]) { @($Usage) } else { @($Usage) }
     foreach ($item in $items) {

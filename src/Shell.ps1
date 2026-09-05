@@ -555,32 +555,26 @@ $xaml = @'
           <StackPanel x:Name="cursorBody">
            <StackPanel x:Name="cursorFull">
 
-            <!-- Cursor Models (plan %) — primary, Codex-style -->
+            <!-- MODELS (plan %) — Codex-clean primary meter -->
             <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,4">
+              <Grid Margin="0,0,0,3">
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="reqLabel" Grid.Column="0" Text="CURSOR MODELS"
-                           Foreground="#34D399" FontSize="11" FontFamily="Bahnschrift SemiBold"
-                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock x:Name="reqLabel" Grid.Column="0" Text="MODELS"
+                           Foreground="#34D399" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <Border x:Name="overPill" Grid.Column="1" Background="#1F1800"
                         BorderBrush="#FBBF24" BorderThickness="1" CornerRadius="3"
-                        Padding="3,1,3,1" VerticalAlignment="Center" HorizontalAlignment="Left" Visibility="Collapsed">
+                        Padding="3,1,3,1" VerticalAlignment="Bottom" Margin="0,0,6,2" Visibility="Collapsed">
                   <TextBlock Text="over" Foreground="#FBBF24" FontSize="9" FontFamily="Bahnschrift SemiBold"/>
                 </Border>
-                <TextBlock x:Name="reqReset" Grid.Column="2" Text=""
-                           Foreground="#7EC4A6" FontSize="10" FontFamily="Consolas" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" x:Name="reqCount" Text="--" Foreground="#F1F5F9"
+                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                <TextBlock Grid.Column="3" x:Name="reqReset" Text=""
+                           Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
-              <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock x:Name="reqCountLabel" Grid.Column="0" Text="Plan"
-                           Foreground="#7EC4A6" FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Center"/>
-                <TextBlock x:Name="reqCount" Grid.Column="1" Text="-- / --"
-                           Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
-              </Grid>
-              <Border x:Name="barTrack" Height="6" CornerRadius="3" Background="#0E2018" Width="250" HorizontalAlignment="Left">
-                <Border x:Name="reqBar" Height="6" CornerRadius="3" HorizontalAlignment="Left" Width="0">
+              <Border x:Name="barTrack" Height="7" CornerRadius="3.5" Background="#0E2018" Width="250" HorizontalAlignment="Left">
+                <Border x:Name="reqBar" Height="7" CornerRadius="3.5" HorizontalAlignment="Left" Width="0">
                   <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                       <GradientStop Color="#065F46" Offset="0"/><GradientStop Color="#34D399" Offset="1"/>
@@ -588,40 +582,30 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <StackPanel x:Name="cursorReqSparkRow" Visibility="Collapsed" Margin="0,4,0,0">
+              <TextBlock x:Name="reqSub" Text="used" Foreground="#5C7A96"
+                         FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
+              <StackPanel x:Name="cursorReqSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
                 <Canvas x:Name="cursorReqSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
                   <Polyline x:Name="cursorReqSpark" Stroke="#34D399" StrokeThickness="1.5" StrokeLineJoin="Round"/>
                 </Canvas>
               </StackPanel>
             </StackPanel>
 
-            <!-- Other Models (API / named) from usage-summary -->
-            <StackPanel x:Name="otherModelsRow" Margin="0,0,0,10">
-              <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="otherModelsLabel" Grid.Column="0" Text="OTHER MODELS"
-                           Foreground="#34D399" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-                <TextBlock x:Name="otherModelsText" Grid.Column="1" Text="--"
-                           Foreground="#6EE7B7" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
-              </Grid>
-            </StackPanel>
+            <!-- OTHER — secondary like Codex RESETS -->
+            <Grid x:Name="otherModelsRow" Margin="0,0,0,2">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock x:Name="otherModelsLabel" Grid.Column="0" Text="OTHER"
+                         Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="otherModelsText" Grid.Column="1" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
 
-            <!-- Local analytics (hidden when get-user-analytics / LocalData is null) -->
-
-            <!-- On-demand secondary (Off / $) — not the hero when plan matters -->
-            <StackPanel x:Name="onDemandRow" Margin="0,0,0,10">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
-                           Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-                <TextBlock x:Name="onDemandText" Grid.Column="1" Text="--"
-                           Foreground="#5B9A80" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
-              </Grid>
-            </StackPanel>
+            <!-- ON-DEMAND secondary (Off / $) -->
+            <Grid x:Name="onDemandRow" Margin="0,0,0,2">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
+                         Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock x:Name="onDemandText" Grid.Column="1" Text="--" Foreground="#5B9A80" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
 
             <StackPanel x:Name="cursorAnalyticsBlock" Visibility="Collapsed">
             <Grid Margin="0,0,0,5">
@@ -736,8 +720,8 @@ $xaml = @'
             <Grid Margin="0,0,0,2">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="USAGE" Foreground="#7BA8C8"
-                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas" TextWrapping="Wrap"/>
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Top" Margin="0,2,0,0"/>
+              <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas" TextWrapping="Wrap" LineHeight="16"/>
             </Grid>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1436,7 +1420,7 @@ function Update-GrokSection {
 }
 
 function Update-CursorSection {
-    # Cursor Models / Other Models / on-demand from usage-summary (Plan & Usage).
+    # MODELS / OTHER / on-demand from usage-summary (Plan & Usage).
     # Do not paint from legacy usage.gpt-4 numRequests/maxRequestUsage (null → 0/0).
     $plan = Get-CursorPlanUsageFromSummary $script:SummaryData
     $hasBar = ($null -ne $plan.BarPercent)
@@ -1471,8 +1455,24 @@ function Update-CursorSection {
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
     }
 
+    # Full view: big % like Codex WEEKLY; used/limit only in sub when it agrees with bar.
     $countText = Format-CursorPlanCountText $plan
-    $script:window.FindName('reqCount').Text = $countText
+    $rc = $script:window.FindName('reqCount')
+    $sub = $script:window.FindName('reqSub')
+    if ($rc) {
+        if ($hasBar) {
+            $rc.Text = ('{0}%' -f $pct)
+        } else {
+            $rc.Text = '--'
+        }
+    }
+    if ($sub) {
+        if ($hasBar -and $countText -match '/') {
+            $sub.Text = $countText
+        } else {
+            $sub.Text = 'used'
+        }
+    }
     $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = $countText }
     $rr = $script:window.FindName('reqReset')
     if ($rr) {
