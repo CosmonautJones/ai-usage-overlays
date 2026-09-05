@@ -1483,12 +1483,31 @@ function Update-CursorSection {
 # ---------------------------------------------------------------------------
 # Update-AllSections - chrome dot/time + the three section renderers + tray text.
 # ---------------------------------------------------------------------------
+function Test-ClaudeSectionVisible {
+    # Show/Hide Claude: Cfg.Sections['claude'] false means Claude chrome must stay quiet.
+    if (-not $script:Cfg -or -not $script:Cfg.Sections) { return $true }
+    $sections = $script:Cfg.Sections
+    if ($sections -is [System.Collections.IDictionary]) {
+        if ($sections.Contains('claude')) { return [bool]$sections['claude'] }
+        return $true
+    }
+    $prop = $sections.PSObject.Properties['claude']
+    if ($prop) { return [bool]$prop.Value }
+    return $true
+}
+
 function Update-AllSections {
     $dot  = $script:window.FindName('statusDot')
     $time = $script:window.FindName('timeText')
     $status = if ($script:State) { $script:State.Status } else { 'init' }
+    $claudeShown = Test-ClaudeSectionVisible
+    # When Claude is hidden, do not surface Claude auth/stale/error in top chrome.
+    $chromeStatus = $status
+    if (-not $claudeShown -and $status -in @('auth', 'error', 'stale')) {
+        $chromeStatus = 'ok'
+    }
     if ($dot) {
-        switch ($status) {
+        switch ($chromeStatus) {
             'ok'    { $dot.Fill = NewBrush '#4ADE80' }
             'stale' { $dot.Fill = NewBrush '#FBBF24' }
             'auth'  { $dot.Fill = NewBrush '#F87171' }
@@ -1497,7 +1516,13 @@ function Update-AllSections {
         }
     }
     if ($time -and $script:State) {
-        $time.Text = if ($script:State.Status -eq 'ok') { $script:State.LastFetch } else { $script:State.Message }
+        if ($script:State.Status -eq 'ok') {
+            $time.Text = $script:State.LastFetch
+        } elseif ($claudeShown) {
+            $time.Text = $script:State.Message
+        } else {
+            $time.Text = ''
+        }
     }
 
     Update-ClaudeSection
