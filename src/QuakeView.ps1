@@ -226,11 +226,7 @@ function Render-QuakeCursor($tb) {
     }
     if ($plan -and ($null -ne $plan.BarPercent)) {
         Add-QuakeGaugeLine $tb 'CURSOR' $plan.BarPercent $null
-        if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
-            Add-QuakeStatLine $tb 'models' ('{0:N0} / {1:N0}' -f [double]$plan.Used, [double]$plan.Limit)
-        } else {
-            Add-QuakeStatLine $tb 'models' ('{0:0}%' -f [double]$plan.BarPercent)
-        }
+        Add-QuakeStatLine $tb 'models' (Format-CursorPlanCountText $plan)
     } else {
         Add-QuakeGaugeLine $tb 'CURSOR' $null $null
     }

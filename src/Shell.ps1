@@ -555,15 +555,7 @@ $xaml = @'
           <StackPanel x:Name="cursorBody">
            <StackPanel x:Name="cursorFull">
 
-            <!-- ON-DEMAND HERO -->
-            <StackPanel Margin="0,0,0,10">
-              <TextBlock x:Name="onDemandLabel" Text="ON-DEMAND THIS CYCLE"
-                         Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold" Margin="0,0,0,2"/>
-              <TextBlock x:Name="onDemandText" Text="--"
-                         Foreground="#FBBF24" FontSize="30" FontFamily="Bahnschrift Bold"/>
-            </StackPanel>
-
-            <!-- Included Requests -->
+            <!-- Cursor Models (plan %) — primary, Codex-style -->
             <StackPanel Margin="0,0,0,10">
               <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
@@ -617,6 +609,20 @@ $xaml = @'
             </StackPanel>
 
             <!-- Local analytics (hidden when get-user-analytics / LocalData is null) -->
+
+            <!-- On-demand secondary (Off / $) — not the hero when plan matters -->
+            <StackPanel x:Name="onDemandRow" Margin="0,0,0,10">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
+                           Foreground="#7EC4A6" FontSize="11" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="onDemandText" Grid.Column="1" Text="--"
+                           Foreground="#5B9A80" FontSize="12" FontFamily="Bahnschrift Bold" VerticalAlignment="Center"/>
+              </Grid>
+            </StackPanel>
+
             <StackPanel x:Name="cursorAnalyticsBlock" Visibility="Collapsed">
             <Grid Margin="0,0,0,5">
               <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1435,11 +1441,12 @@ function Update-CursorSection {
     $plan = Get-CursorPlanUsageFromSummary $script:SummaryData
     $hasBar = ($null -ne $plan.BarPercent)
     $pct = if ($hasBar) { [math]::Min(100, [math]::Round([double]$plan.BarPercent)) } else { 0 }
+    # Prefer bar % for overage so a mismatched used/limit (e.g. 2000/2000) does not flash "over".
     $over = $false
-    if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
-        $over = [double]$plan.Used -gt [double]$plan.Limit
-    } elseif ($hasBar) {
+    if ($hasBar) {
         $over = [double]$plan.BarPercent -gt 100
+    } elseif (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
+        $over = [double]$plan.Used -gt [double]$plan.Limit
     }
 
     $bar = $script:window.FindName('reqBar')
@@ -1464,12 +1471,7 @@ function Update-CursorSection {
         if ($pill) { $pill.Visibility = [System.Windows.Visibility]::Collapsed }
     }
 
-    $countText = '-- / --'
-    if (($null -ne $plan.Used) -and ($null -ne $plan.Limit) -and ([double]$plan.Limit -gt 0)) {
-        $countText = ('{0} / {1}' -f [int][math]::Round([double]$plan.Used), [int][math]::Round([double]$plan.Limit))
-    } elseif ($hasBar) {
-        $countText = ('{0}%' -f $pct)
-    }
+    $countText = Format-CursorPlanCountText $plan
     $script:window.FindName('reqCount').Text = $countText
     $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = $countText }
     $rr = $script:window.FindName('reqReset')
@@ -1494,17 +1496,15 @@ function Update-CursorSection {
             $od.Text = $script:CursorErrMsg
             $od.Foreground = NewBrush '#F87171'
         } else {
+            $od.FontSize = 12
             if (($null -ne $plan.OnDemandEnabled) -and (-not $plan.OnDemandEnabled)) {
-                $od.FontSize = 22
                 $od.Text = 'Off'
                 $od.Foreground = NewBrush '#5B9A80'
             } elseif ($null -ne $plan.OnDemandUsedCents) {
-                $od.FontSize = 30
                 $dollars = [double]$plan.OnDemandUsedCents / 100.0
                 $od.Text = ('${0:N2}' -f $dollars)
                 $od.Foreground = if ($dollars -gt 0) { NewBrush '#FBBF24' } else { NewBrush '#5B9A80' }
             } else {
-                $od.FontSize = 30
                 $od.Text = '--'
                 $od.Foreground = NewBrush '#5B9A80'
             }
