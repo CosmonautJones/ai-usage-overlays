@@ -947,9 +947,42 @@ function Apply-FooterBrandMark {
         $img.Visibility = [System.Windows.Visibility]::Visible
         $box.Visibility = [System.Windows.Visibility]::Collapsed
     } else {
+        $img.Source = $null
         $img.Visibility = [System.Windows.Visibility]::Collapsed
         $box.Visibility = [System.Windows.Visibility]::Visible
     }
+}
+
+function Invoke-SetFooterBrand {
+    # Tray-discoverable: pick a PNG into the documented drop path, then repaint.
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Filter = 'PNG image (*.png)|*.png|All files (*.*)|*.*'
+    $dlg.Title = 'Choose footer brand PNG'
+    $dlg.CheckFileExists = $true
+    if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+    $dest = Get-OverlayBrandPngPath
+    $dir = Split-Path -Parent $dest
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    try {
+        Copy-Item -LiteralPath $dlg.FileName -Destination $dest -Force
+    } catch {
+        if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            Write-Log "Set footer brand failed: $($_.Exception.Message)"
+        }
+        return
+    }
+    Apply-FooterBrandMark
+}
+
+function Invoke-ResetFooterBrand {
+    $path = Get-OverlayBrandPngPath
+    if (Test-Path -LiteralPath $path) {
+        try { Remove-Item -LiteralPath $path -Force } catch { }
+    }
+    Apply-FooterBrandMark
 }
 
 function Apply-UnifiedTheme([string]$name) {

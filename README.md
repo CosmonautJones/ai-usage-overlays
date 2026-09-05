@@ -49,11 +49,7 @@ Missing CLIs show as disabled (`grok not installed`) instead of crashing. Grok a
 
 ## Your own mark
 
-Footer defaults to the TravOS slab-T. Drop a PNG at:
-
-`%LOCALAPPDATA%\AIUsageOverlay\brand.png`
-
-Restart the overlay. If that file is present, it is the footer mark (keep it small - tray-sized). No file = TravOS.
+Footer defaults to the TravOS slab-T. Right-click the tray → **Set footer brand…** to pick a PNG (saved as `%LOCALAPPDATA%\AIUsageOverlay\brand.png`), or **Reset TravOS mark** to remove it. You can still drop `brand.png` there by hand. Keep it small (tray-sized). Bad or missing file = TravOS.
 
 ## Usage
 
@@ -61,6 +57,7 @@ Restart the overlay. If that file is present, it is the footer mark (keep it sma
 | --- | --- |
 | Show / hide overlay | Left-click the **AI** tray icon |
 | Log in a provider | Right-click → Log in |
+| Set / reset footer mark | Right-click → Set footer brand… / Reset TravOS mark |
 | Show / hide a section | Right-click → Show/Hide provider |
 | Expand / collapse | Click the section header |
 | History sparks | Right-click → Show history graph |
