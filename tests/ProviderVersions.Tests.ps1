@@ -50,7 +50,51 @@ Describe 'Shell version badge wiring' {
         $script:Shell | Should -Match 'x:Name="cursorVersionText"'
         $script:Shell | Should -Match 'x:Name="grokVersionText"'
         $script:Shell | Should -Match 'Update-ProviderVersionLabels'
+        $root2 = Split-Path $PSScriptRoot -Parent
+        $pv = Get-Content (Join-Path $root2 'src\ProviderVersions.ps1') -Raw -Encoding UTF8
+        $pv | Should -Match 'Format-ProviderVersionPlanBadge'
+        $pv | Should -Match 'Get-ProviderPlanLabel'
         $script:Shell | Should -Match '#5C7A96'
         $script:Entry | Should -Match 'ProviderVersions\.ps1'
+    }
+}
+
+
+Describe 'Format-ProviderVersionPlanBadge' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        . (Join-Path $root 'src\ProviderVersions.ps1')
+    }
+
+    It 'appends plan with middot when present' {
+        Format-ProviderVersionPlanBadge -Version '0.146.0' -Plan 'pro' | Should -Be '0.146.0 · Pro'
+        Format-ProviderVersionPlanBadge -Version '3.18.25' -Plan 'pro_plus' | Should -Be '3.18.25 · Pro Plus'
+    }
+
+    It 'omits plan when missing (no -- plan)' {
+        Format-ProviderVersionPlanBadge -Version '1.0.13' -Plan $null | Should -Be '1.0.13'
+        Format-ProviderVersionPlanBadge -Version '1.0.13' -Plan '' | Should -Be '1.0.13'
+        Format-ProviderVersionPlanBadge -Version '1.0.13' -Plan '--' | Should -Be '1.0.13'
+    }
+}
+
+Describe 'Get-ProviderPlanLabel sources' {
+    BeforeAll {
+        $root = Split-Path $PSScriptRoot -Parent
+        . (Join-Path $root 'src\ProviderVersions.ps1')
+    }
+
+    It 'reads Cursor membershipType and Grok/Codex PlanType' {
+        $script:SummaryData = [pscustomobject]@{ membershipType = 'pro' }
+        Get-ProviderPlanLabel 'cursor' | Should -Be 'Pro'
+
+        $script:GrokUsage = [pscustomobject]@{ PlanType = 'SuperGrok' }
+        Get-ProviderPlanLabel 'grok' | Should -Be 'SuperGrok'
+
+        $script:CodexStats = [pscustomobject]@{ PlanType = 'plus' }
+        Get-ProviderPlanLabel 'codex' | Should -Be 'Plus'
+
+        $script:ClaudeIdentity = [pscustomobject]@{ Email = 'a@b.c'; Display = 'a@b.c' }
+        Get-ProviderPlanLabel 'claude' | Should -BeNullOrEmpty
     }
 }

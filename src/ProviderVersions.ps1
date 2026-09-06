@@ -167,6 +167,84 @@ function Get-CursorAppVersionCached {
     }
 }
 
+
+function Format-ProviderPlanLabel {
+    param($Raw)
+    if ($null -eq $Raw) { return $null }
+    $s = ([string]$Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($s) -or $s -eq '--' -or $s -eq 'null') { return $null }
+    # membershipType / plan_type often snake or lower: pro, pro_plus, plus
+    if ($s -match '^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$') {
+        $parts = $s -split '[_-]'
+        $nice = foreach ($part in $parts) {
+            if (-not $part) { continue }
+            $part.Substring(0, 1).ToUpper() + $part.Substring(1).ToLower()
+        }
+        return ($nice -join ' ')
+    }
+    return $s
+}
+
+function Format-ProviderVersionPlanBadge {
+    param(
+        [string]$Version,
+        [string]$Plan
+    )
+    $ver = if ([string]::IsNullOrWhiteSpace($Version)) { '--' } else { $Version.Trim() }
+    $plan = Format-ProviderPlanLabel $Plan
+    if (-not $plan) { return $ver }
+    return ('{0} · {1}' -f $ver, $plan)
+}
+
+function Get-ProviderPlanLabel {
+    param([Parameter(Mandatory = $true)][string]$Provider)
+
+    switch -Regex ($Provider) {
+        '^(?i)cursor$' {
+            $sum = $script:SummaryData
+            if ($sum -and $sum.membershipType) {
+                return Format-ProviderPlanLabel $sum.membershipType
+            }
+            if (Get-Command Get-CursorPlanUsageFromSummary -ErrorAction SilentlyContinue) {
+                $plan = Get-CursorPlanUsageFromSummary $sum
+                if ($plan -and $plan.MembershipType) {
+                    return Format-ProviderPlanLabel $plan.MembershipType
+                }
+            }
+            return $null
+        }
+        '^(?i)grok$' {
+            $s = $script:GrokUsage
+            if (-not $s) { return $null }
+            $pt = $null
+            if (Get-Command Get-OverlayStatNote -ErrorAction SilentlyContinue) {
+                $pt = Get-OverlayStatNote $s 'PlanType'
+            }
+            if (-not $pt -and $s.PSObject.Properties['PlanType']) { $pt = $s.PlanType }
+            return Format-ProviderPlanLabel $pt
+        }
+        '^(?i)codex$' {
+            $s = $script:CodexStats
+            if ($s -and $s.PSObject.Properties['PlanType'] -and $s.PlanType) {
+                return Format-ProviderPlanLabel $s.PlanType
+            }
+            return $null
+        }
+        '^(?i)claude$' {
+            # No stable plan tier on ClaudeIdentity today — omit rather than invent.
+            $id = $script:ClaudeIdentity
+            if (-not $id) { return $null }
+            foreach ($name in @('Plan', 'PlanType', 'Subscription', 'Tier')) {
+                if ($id.PSObject.Properties[$name] -and $id.$name) {
+                    return Format-ProviderPlanLabel $id.$name
+                }
+            }
+            return $null
+        }
+        default { return $null }
+    }
+}
+
 function Update-ProviderVersionLabels {
     if (-not $script:window) { return }
     $muted = if ($script:ProviderVersionMutedFg) { $script:ProviderVersionMutedFg } else { '#5C7A96' }
@@ -177,10 +255,10 @@ function Update-ProviderVersionLabels {
     }
 
     $specs = @(
-        @{ El = 'claudeVersionText'; Show = $claudeShown; Get = { Get-ProviderCliVersionCached 'claude' } }
-        @{ El = 'codexVersionText';  Show = $true;       Get = { Get-ProviderCliVersionCached 'codex' } }
-        @{ El = 'cursorVersionText'; Show = $true;       Get = { Get-CursorAppVersionCached } }
-        @{ El = 'grokVersionText';   Show = $true;       Get = { Get-ProviderCliVersionCached 'grok' } }
+        @{ El = 'claudeVersionText'; Provider = 'claude'; Show = $claudeShown; Get = { Get-ProviderCliVersionCached 'claude' } }
+        @{ El = 'codexVersionText';  Provider = 'codex';  Show = $true;       Get = { Get-ProviderCliVersionCached 'codex' } }
+        @{ El = 'cursorVersionText'; Provider = 'cursor'; Show = $true;       Get = { Get-CursorAppVersionCached } }
+        @{ El = 'grokVersionText';   Provider = 'grok';   Show = $true;       Get = { Get-ProviderCliVersionCached 'grok' } }
     )
 
     foreach ($spec in $specs) {
@@ -193,7 +271,8 @@ function Update-ProviderVersionLabels {
         }
         $ver = & $spec.Get
         if ([string]::IsNullOrWhiteSpace($ver)) { $ver = '--' }
-        $el.Text = $ver
+        $plan = Get-ProviderPlanLabel $spec.Provider
+        $el.Text = Format-ProviderVersionPlanBadge -Version $ver -Plan $plan
         if ($el.PSObject.Properties['Foreground']) {
             try { $el.Foreground = (NewBrush $muted) } catch { }
         }
