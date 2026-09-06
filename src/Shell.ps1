@@ -820,14 +820,72 @@ function Set-BarWidth($b, [double]$target) {
     $b.BeginAnimation($wp, $anim)
 }
 
-function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt) {
+
+function Resolve-PctAccentFg($util, [string]$AccentFg) {
+    # Warn/crit still win; otherwise paint primary % in the provider bar hue.
+    if ($null -eq $util) { return '#F1F5F9' }
+    $u = [double]$util
+    if ($u -ge $script:CritPct) { return '#F87171' }
+    if ($u -ge $script:WarnPct) { return '#FBBF24' }
+    if (-not [string]::IsNullOrWhiteSpace($AccentFg)) { return $AccentFg }
+    return '#F1F5F9'
+}
+
+function Set-PctAccentStyle($el, [string]$fg, [switch]$Compact) {
+    if (-not $el) { return }
+    $el.Foreground = NewBrush $fg
+    # Slightly bolder than the surrounding secondary stats.
+    $el.FontWeight = if ($Compact) {
+        [System.Windows.FontWeights]::Bold
+    } else {
+        [System.Windows.FontWeights]::ExtraBold
+    }
+}
+
+function Set-GrokProductUsageVisual($tb, [string]$text, [string]$AccentFg) {
+    # Stacked chips: name stays muted; trailing N% uses Grok bar hue.
+    if (-not $tb) { return }
+    $tb.Text = $null
+    $tb.Inlines.Clear()
+    $accent = if (-not [string]::IsNullOrWhiteSpace($AccentFg)) { $AccentFg } else { '#FDE68A' }
+    $muted = '#94A3B8'
+    if ([string]::IsNullOrWhiteSpace($text) -or $text -eq '--') {
+        $run = New-Object System.Windows.Documents.Run('--')
+        $run.Foreground = NewBrush $muted
+        [void]$tb.Inlines.Add($run)
+        return
+    }
+    $lines = [regex]::Split([string]$text, '\r?\n')
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($i -gt 0) { [void]$tb.Inlines.Add((New-Object System.Windows.Documents.LineBreak)) }
+        $line = $lines[$i]
+        if ($line -match '^(.*?)(\s+)(\d+%)$') {
+            $nameRun = New-Object System.Windows.Documents.Run($Matches[1])
+            $nameRun.Foreground = NewBrush $muted
+            $gap = New-Object System.Windows.Documents.Run($Matches[2])
+            $gap.Foreground = NewBrush $muted
+            $pctRun = New-Object System.Windows.Documents.Run($Matches[3])
+            $pctRun.Foreground = NewBrush $accent
+            $pctRun.FontWeight = [System.Windows.FontWeights]::Bold
+            [void]$tb.Inlines.Add($nameRun)
+            [void]$tb.Inlines.Add($gap)
+            [void]$tb.Inlines.Add($pctRun)
+        } else {
+            $run = New-Object System.Windows.Documents.Run($line)
+            $run.Foreground = NewBrush $muted
+            [void]$tb.Inlines.Add($run)
+        }
+    }
+}
+
+function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt, [string]$AccentFg = $null) {
     $b  = $script:window.FindName($bar)
     $p  = $script:window.FindName($pct)
     $sb = if ($sub)   { $script:window.FindName($sub)   } else { $null }
     $r  = if ($reset) { $script:window.FindName($reset) } else { $null }
     if (-not $b -or -not $p) { return }
     if ($null -eq $util) {
-        Set-BarWidth $b 0; $p.Text = '--'; $p.Foreground = NewBrush '#F1F5F9'
+        Set-BarWidth $b 0; $p.Text = '--'; Set-PctAccentStyle $p '#F1F5F9'
         if ($sb) { $sb.Text = 'used' }
         if ($r)  { $r.Text  = '' }
         return
@@ -835,8 +893,7 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
     $u        = [double]$util
     Set-BarWidth $b ([math]::Max(0, [math]::Min($script:BarTrackWidth, [math]::Round($u / 100.0 * $script:BarTrackWidth))))
     $p.Text   = ('{0:0}%' -f $u)
-    $fg = if ($u -ge $script:CritPct) { '#F87171' } elseif ($u -ge $script:WarnPct) { '#FBBF24' } else { '#F1F5F9' }
-    $p.Foreground = NewBrush $fg
+    Set-PctAccentStyle $p (Resolve-PctAccentFg $u $AccentFg)
     if ($sb) { $sb.Text = if ($u -ge $script:CritPct) { 'critical!' } elseif ($u -ge $script:WarnPct) { 'high' } else { 'used' } }
     if ($r)  { $r.Text  = Format-Reset $resetsAt }
 }
@@ -846,19 +903,18 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
 # text (same warn/crit foreground as the full view). Safe no-op until the
 # compact XAML exists (FindName returns null for missing elements).
 # ---------------------------------------------------------------------------
-function Set-CompactBar([string]$bar, [string]$pct, $util) {
+function Set-CompactBar([string]$bar, [string]$pct, $util, [string]$AccentFg = $null) {
     $b = $script:window.FindName($bar)
     $p = $script:window.FindName($pct)
     if (-not $b -or -not $p) { return }
     if ($null -eq $util) {
-        Set-BarWidth $b 0; $p.Text = '--'; $p.Foreground = NewBrush '#F1F5F9'
+        Set-BarWidth $b 0; $p.Text = '--'; Set-PctAccentStyle $p '#F1F5F9' -Compact
         return
     }
     $u = [double]$util
     Set-BarWidth $b ([math]::Max(0, [math]::Min($script:CompactBarWidth, [math]::Round($u / 100.0 * $script:CompactBarWidth))))
     $p.Text = ('{0:0}%' -f $u)
-    $fg = if ($u -ge $script:CritPct) { '#F87171' } elseif ($u -ge $script:WarnPct) { '#FBBF24' } else { '#F1F5F9' }
-    $p.Foreground = NewBrush $fg
+    Set-PctAccentStyle $p (Resolve-PctAccentFg $u $AccentFg) -Compact
 }
 
 # ---------------------------------------------------------------------------
@@ -1014,9 +1070,15 @@ function Apply-UnifiedTheme([string]$name) {
     $cc  = if ($t.CursorColors) { $t.CursorColors } elseif ($t.FivehColors) { $t.FivehColors } else { @('#065F46','#34D399') }
     $cfg = if ($t.CursorFg)     { $t.CursorFg }     elseif ($t.FivehFg)     { $t.FivehFg }     else { '#34D399' }
     $script:CursorColorsCur = $cc
+    $script:AccentCursor = $cfg
     $gc  = if ($t.GrokColors) { $t.GrokColors } elseif ($t.OpusColors) { $t.OpusColors } else { @('#A16207','#FDE68A') }
     $gfg = if ($t.GrokFg)     { $t.GrokFg }     elseif ($t.OpusFg)     { $t.OpusFg }     else { '#FDE68A' }
     $script:GrokColorsCur = $gc
+    $script:AccentGrok = $gfg
+    $script:AccentFiveh = if ($t.FivehFg) { $t.FivehFg } else { '#38BDF8' }
+    $script:AccentWeek  = if ($t.WeekFg)  { $t.WeekFg }  else { '#FB923C' }
+    $script:AccentFab   = if ($t.FabFg)   { $t.FabFg }   else { '#C084FC' }
+    $script:AccentOpus  = if ($t.OpusFg)  { $t.OpusFg }  else { '#FDE047' }
     foreach ($bn in @('grokWeekBar','grokWeekBarC')) {
         $gb = $script:window.FindName($bn)
         if ($gb) { $gb.Background = New-GradientBrush $gc[0] $gc[1] }
@@ -1034,6 +1096,23 @@ function Apply-UnifiedTheme([string]$name) {
     foreach ($ln in @('reqLabel','reqLabelC')) {
         $rl = $script:window.FindName($ln)
         if ($rl) { $rl.Foreground = NewBrush $cfg }
+    }
+    # Primary % accents track theme bar hues (refresh re-applies warn/crit).
+    foreach ($pair in @(
+        @('fivehPct','fivehPctC',$script:AccentFiveh),
+        @('weekPct','weekPctC',$script:AccentWeek),
+        @('fabPct','fabPctC',$script:AccentFab),
+        @('opusPct','opusPctC',$script:AccentOpus),
+        @('codexFivehPct','codexFivehPctC',$script:AccentFiveh),
+        @('codexWeekPct','codexWeekPctC',$script:AccentWeek),
+        @('reqCount','reqCountC',$script:AccentCursor),
+        @('grokWeekPct','grokWeekPctC',$script:AccentGrok)
+    )) {
+        $full = $script:window.FindName($pair[0])
+        $comp = $script:window.FindName($pair[1])
+        $afg  = $pair[2]
+        if ($full) { Set-PctAccentStyle $full $afg }
+        if ($comp) { Set-PctAccentStyle $comp $afg -Compact }
     }
 
     # Sparkline strokes
@@ -1223,12 +1302,12 @@ function Update-ClaudeSection {
 
     $d = if ($script:State) { $script:State.Data } else { $null }
     if ($null -eq $d) {
-        Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $null $null
-        Set-SectionBar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $null $null
-        Set-SectionBar 'fabBar'   'fabPct'   'fabSub'   'fabReset'   $null $null
-        Set-CompactBar 'fivehBarC' 'fivehPctC' $null
-        Set-CompactBar 'weekBarC'  'weekPctC'  $null
-        Set-CompactBar 'fabBarC'   'fabPctC'   $null
+        Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $null $null -AccentFg $script:AccentFiveh
+        Set-SectionBar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $null $null -AccentFg $script:AccentWeek
+        Set-SectionBar 'fabBar'   'fabPct'   'fabSub'   'fabReset'   $null $null -AccentFg $script:AccentFab
+        Set-CompactBar 'fivehBarC' 'fivehPctC' $null -AccentFg $script:AccentFiveh
+        Set-CompactBar 'weekBarC'  'weekPctC'  $null -AccentFg $script:AccentWeek
+        Set-CompactBar 'fabBarC'   'fabPctC'   $null -AccentFg $script:AccentFab
         $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = '' }
         return
     }
@@ -1237,27 +1316,27 @@ function Update-ClaudeSection {
 
     $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = Format-Reset $d.five_hour.resets_at }
 
-    Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at
-    Set-CompactBar 'fivehBarC' 'fivehPctC' $d.five_hour.utilization
+    Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at -AccentFg $script:AccentFiveh
+    Set-CompactBar 'fivehBarC' 'fivehPctC' $d.five_hour.utilization -AccentFg $script:AccentFiveh
     Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour' 'fivehSparkRow'
     Set-Spark 'fivehSparkC' 'fivehSparkCanvasC' 'five_hour' 'fivehSparkRowC'
     if ($hasAlert) { Check-Alert 'five_hour' $d.five_hour.utilization }
 
-    Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at
-    Set-CompactBar 'weekBarC' 'weekPctC' $d.seven_day.utilization
+    Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at -AccentFg $script:AccentWeek
+    Set-CompactBar 'weekBarC' 'weekPctC' $d.seven_day.utilization -AccentFg $script:AccentWeek
     Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day' 'weekSparkRow'
     Set-Spark 'weekSparkC' 'weekSparkCanvasC' 'seven_day' 'weekSparkRowC'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
-    Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at
-    Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization
+    Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab
+    Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization -AccentFg $script:AccentFab
     if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible
         $oc = $script:window.FindName('opusRowC'); if ($oc) { $oc.Visibility = [System.Windows.Visibility]::Visible }
-        Set-SectionBar 'opusBar' 'opusPct' 'opusSub' 'opusReset' $d.seven_day_opus.utilization $d.seven_day_opus.resets_at
-        Set-CompactBar 'opusBarC' 'opusPctC' $d.seven_day_opus.utilization
+        Set-SectionBar 'opusBar' 'opusPct' 'opusSub' 'opusReset' $d.seven_day_opus.utilization $d.seven_day_opus.resets_at -AccentFg $script:AccentOpus
+        Set-CompactBar 'opusBarC' 'opusPctC' $d.seven_day_opus.utilization -AccentFg $script:AccentOpus
         if ($hasAlert) { Check-Alert 'seven_day_opus' $d.seven_day_opus.utilization }
     } else {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Collapsed
@@ -1324,8 +1403,8 @@ function Update-CodexSection {
         foreach ($n in @('codexFivehRow','codexFivehRowC','codexFivehSparkRow','codexFivehSparkRowC')) {
             $el = $script:window.FindName($n); if ($el) { $el.Visibility = [System.Windows.Visibility]::Collapsed }
         }
-        Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null
-        Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $null
+        Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $null $null -AccentFg $script:AccentWeek
+        Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $null -AccentFg $script:AccentWeek
         Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
         Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
         $cr = $script:window.FindName('codexResetsText'); if ($cr) { $cr.Text = '--' }
@@ -1346,8 +1425,8 @@ function Update-CodexSection {
         $el = $script:window.FindName($n); if ($el) { $el.Visibility = $fivehVis }
     }
     if ($null -ne $fiveHourPct) {
-        Set-SectionBar 'codexFivehBar' 'codexFivehPct' 'codexFivehSub' 'codexFivehReset' $fiveHourPct $fiveHourResetsAt
-        Set-CompactBar 'codexFivehBarC' 'codexFivehPctC' $fiveHourPct
+        Set-SectionBar 'codexFivehBar' 'codexFivehPct' 'codexFivehSub' 'codexFivehReset' $fiveHourPct $fiveHourResetsAt -AccentFg $script:AccentFiveh
+        Set-CompactBar 'codexFivehBarC' 'codexFivehPctC' $fiveHourPct -AccentFg $script:AccentFiveh
         Set-Spark 'codexFivehSpark' 'codexFivehSparkCanvas' 'codex_five_hour' 'codexFivehSparkRow'
         Set-Spark 'codexFivehSparkC' 'codexFivehSparkCanvasC' 'codex_five_hour' 'codexFivehSparkRowC'
     } else {
@@ -1356,8 +1435,8 @@ function Update-CodexSection {
             $el = $script:window.FindName($n); if ($el) { $el.Visibility = [System.Windows.Visibility]::Collapsed }
         }
     }
-    Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $weekPct $weekResetsAt
-    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $weekPct
+    Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $weekPct $weekResetsAt -AccentFg $script:AccentWeek
+    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $weekPct -AccentFg $script:AccentWeek
     Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
     Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
     $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $weekResetsAt }
@@ -1386,11 +1465,11 @@ function Update-GrokSection {
 
     $s = $script:GrokUsage
     if (-not $s) {
-        Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $null $null
-        Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $null
+        Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $null $null -AccentFg $script:AccentGrok
+        Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $null -AccentFg $script:AccentGrok
         Set-Spark 'grokWeekSpark' 'grokWeekSparkCanvas' 'grok_seven_day' 'grokWeekSparkRow'
         Set-Spark 'grokWeekSparkC' 'grokWeekSparkCanvasC' 'grok_seven_day' 'grokWeekSparkRowC'
-        $pt = $script:window.FindName('grokPlanText'); if ($pt) { $pt.Text = '--' }
+        $pt = $script:window.FindName('grokPlanText'); if ($pt) { Set-GrokProductUsageVisual $pt '--' $script:AccentGrok }
         $pp = $script:window.FindName('grokPrepaidText'); if ($pp) { $pp.Text = '--' }
         $hd = $script:window.FindName('grokHeaderDetail'); if ($hd) { $hd.Text = '' }
         return
@@ -1400,17 +1479,16 @@ function Update-GrokSection {
     $prepaid = Get-OverlayStatNote $s 'PrepaidBalance'
     $productText = Get-OverlayStatNote $s 'ProductUsageText'
     $planType = Get-OverlayStatNote $s 'PlanType'
-    Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $weekPct $weekResetsAt
-    Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $weekPct
+    Set-SectionBar 'grokWeekBar' 'grokWeekPct' 'grokWeekSub' 'grokWeekReset' $weekPct $weekResetsAt -AccentFg $script:AccentGrok
+    Set-CompactBar 'grokWeekBarC' 'grokWeekPctC' $weekPct -AccentFg $script:AccentGrok
     Set-Spark 'grokWeekSpark' 'grokWeekSparkCanvas' 'grok_seven_day' 'grokWeekSparkRow'
     Set-Spark 'grokWeekSparkC' 'grokWeekSparkCanvasC' 'grok_seven_day' 'grokWeekSparkRowC'
     $hd = $script:window.FindName('grokHeaderDetail')
     if ($hd) { $hd.Text = Format-Reset $weekResetsAt }
     $pt = $script:window.FindName('grokPlanText')
     if ($pt) {
-        if ($productText) { $pt.Text = [string]$productText }
-        elseif ($planType) { $pt.Text = [string]$planType }
-        else { $pt.Text = '--' }
+        $chipText = if ($productText) { [string]$productText } elseif ($planType) { [string]$planType } else { '--' }
+        Set-GrokProductUsageVisual $pt $chipText $script:AccentGrok
     }
     $pp = $script:window.FindName('grokPrepaidText')
     if ($pp) {
@@ -1457,13 +1535,16 @@ function Update-CursorSection {
 
     # Full view: big % like Codex WEEKLY; used/limit only in sub when it agrees with bar.
     $countText = Format-CursorPlanCountText $plan
+    $cursorAccent = if ($script:AccentCursor) { $script:AccentCursor } else { '#34D399' }
     $rc = $script:window.FindName('reqCount')
     $sub = $script:window.FindName('reqSub')
     if ($rc) {
         if ($hasBar) {
             $rc.Text = ('{0}%' -f $pct)
+            Set-PctAccentStyle $rc (Resolve-PctAccentFg $pct $cursorAccent)
         } else {
             $rc.Text = '--'
+            Set-PctAccentStyle $rc '#F1F5F9'
         }
     }
     if ($sub) {
@@ -1473,7 +1554,15 @@ function Update-CursorSection {
             $sub.Text = 'used'
         }
     }
-    $rcc = $script:window.FindName('reqCountC'); if ($rcc) { $rcc.Text = $countText }
+    $rcc = $script:window.FindName('reqCountC')
+    if ($rcc) {
+        $rcc.Text = $countText
+        if ($hasBar) {
+            Set-PctAccentStyle $rcc (Resolve-PctAccentFg $pct $cursorAccent) -Compact
+        } else {
+            Set-PctAccentStyle $rcc '#F1F5F9' -Compact
+        }
+    }
     $rr = $script:window.FindName('reqReset')
     if ($rr) {
         $rr.Text = if ($plan.BillingCycleEnd) { Format-Reset $plan.BillingCycleEnd } else { '' }
