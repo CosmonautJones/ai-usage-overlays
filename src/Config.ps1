@@ -355,6 +355,12 @@ foreach ($k in $script:CursorPalette.Keys) {
     }
 }
 $script:CursorColorsCur = @('#065F46','#34D399')
+$script:AccentCursor = '#34D399'
+$script:AccentFiveh  = '#38BDF8'
+$script:AccentWeek   = '#FB923C'
+$script:AccentFab    = '#C084FC'
+$script:AccentOpus   = '#FDE047'
+$script:AccentGrok   = '#FDE68A'
 
 # Grok bar color per theme. Distinct from Claude/Codex/Cursor hues.
 $script:GrokPalette = [ordered]@{
