@@ -25,6 +25,10 @@ Grok Bot chat and Cursor-Grok are **not** a fifth tile - they stay under Cursor 
 
 Windows 10/11, PowerShell 5.1 or 7+.
 
+**Download EXE:** [AIUsageOverlaySetup.exe](https://github.com/CosmonautJones/ai-usage-overlays/releases/download/v0.4.0/AIUsageOverlaySetup.exe) (`v0.4.0`) from [Releases](https://github.com/CosmonautJones/ai-usage-overlays/releases).
+
+Or install via PowerShell:
+
 ```powershell
 irm https://raw.githubusercontent.com/CosmonautJones/ai-usage-overlays/master/install.ps1 | iex
 ```
@@ -32,8 +36,6 @@ irm https://raw.githubusercontent.com/CosmonautJones/ai-usage-overlays/master/in
 That installs under `%LOCALAPPDATA%\AIUsageOverlay` and starts the unified overlay.
 
 Or clone and run `Install.bat`. Login autostart uses `Start-Unified.vbs`.
-
-Optional Windows installer (same app): [AIUsageOverlaySetup.exe](https://github.com/CosmonautJones/ai-usage-overlays/releases/download/v0.4.0/AIUsageOverlaySetup.exe) from [Releases](https://github.com/CosmonautJones/ai-usage-overlays/releases) (`v0.4.0`). Prefer `irm|iex` above unless you specifically want the EXE.
 
 ## Choose providers (first run)
 
