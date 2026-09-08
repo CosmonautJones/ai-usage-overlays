@@ -2,7 +2,7 @@
 
 Always-on-top Windows HUD for **Claude Code**, **Codex**, **Cursor**, and **Grok** - live quotas, local totals, and history sparks in one tray app.
 
-![Unified overlay preview](docs/preview.png)
+![AI Usage Overlay — live HUD on master (Codex / Cursor / Grok)](docs/preview.png)
 
 Built as a TravOS portfolio piece. Each provider is an independent adapter: one missing login does not take the others down.
 
