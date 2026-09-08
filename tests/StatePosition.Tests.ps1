@@ -217,8 +217,9 @@ Describe 'Unified state persistence repair' {
 
         Save-UnifiedState
 
-        $saved = Get-Content $script:StatePath -Raw | ConvertFrom-Json
-        $saved.LastUpdateCheckAt | Should -BeOfType [string]
+        # PS7 ConvertFrom-Json re-parses ISO timestamps to [datetime]; assert on raw JSON.
+        $raw = Get-Content $script:StatePath -Raw
+        $raw | Should -Match '"LastUpdateCheckAt"\s*:\s*"'
     }
 
     It 'marks corrupt state for repair during hidden startup' {

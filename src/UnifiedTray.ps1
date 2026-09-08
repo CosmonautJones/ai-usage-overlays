@@ -796,7 +796,12 @@ Add-Separator
 $miProviders = New-StripItem 'Providers' $null
 $miChooseProviders = New-StripItem 'Choose providers…' {
     if (Get-Command Invoke-ProviderPickerFromTray -ErrorAction SilentlyContinue) {
-        Invoke-ProviderPickerFromTray
+        # Defer ShowDialog until after tray menu closes (QA D2).
+        if ($script:ctxStrip -and $script:ctxStrip.IsHandleCreated) {
+            [void]$script:ctxStrip.BeginInvoke([Action]{ Invoke-ProviderPickerFromTray })
+        } else {
+            Invoke-ProviderPickerFromTray
+        }
     }
 }
 [void]$miProviders.DropDownItems.Add($miChooseProviders)

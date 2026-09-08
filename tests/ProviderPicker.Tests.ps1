@@ -56,6 +56,7 @@ Describe 'Picker wiring' {
         $script:Entry | Should -Match 'Invoke-FirstRunProviderPickerIfNeeded'
         $script:Tray | Should -Match 'Choose providers'
         $script:Tray | Should -Match 'Invoke-ProviderPickerFromTray'
+        $script:Tray | Should -Match 'BeginInvoke'
         $script:Tray | Should -Match "Providers"
     }
 }
