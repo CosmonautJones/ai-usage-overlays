@@ -27,8 +27,13 @@ $script:UnifiedCfgDefaults = @{
 }
 
 function ConvertTo-UnifiedSectionsMap($value) {
-    $sections = @{}
-    foreach ($key in $script:UnifiedSectionKeys) { $sections[$key] = $true }
+    # New installs / missing map: Claude off (demo path); others on.
+    if (Get-Command Get-DefaultUnifiedSections -ErrorAction SilentlyContinue) {
+        $sections = Get-DefaultUnifiedSections
+    } else {
+        $sections = @{}
+        foreach ($key in $script:UnifiedSectionKeys) { $sections[$key] = ($key -ne 'claude') }
+    }
 
     if ($null -eq $value) { return $sections }
 
