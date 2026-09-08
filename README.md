@@ -17,7 +17,7 @@ Built as a TravOS portfolio piece. Each provider is an independent adapter: one 
 
 Optional **history sparks** sit under each real bar (Claude, Codex, Grok, Cursor Models). They record on every poll, including when Claude is signed out. The Cursor spark is plan utilization from usage-summary when that series exists (limit > 0 / a real %); it does not invent points from the legacy included-requests fields.
 
-Hide Claude from the tray (**Show/Hide → Claude**) and the top chrome stays quiet: no **Auth expired** / **Not logged in** in the header, and the status dot is not red from Claude auth alone. Turn Claude back on for the previous chrome behavior.
+Hidden providers stay quiet: no tile, and Claude auth noise stays out of the top chrome when Claude is off (no **Auth expired** / **Not logged in** from Claude alone; the status dot is not red from Claude auth). Turn a provider back on anytime from the tray.
 
 Grok Bot chat and Cursor-Grok are **not** a fifth tile - they stay under Cursor so nothing is double-counted.
 
@@ -32,6 +32,21 @@ irm https://raw.githubusercontent.com/CosmonautJones/ai-usage-overlays/master/in
 That installs under `%LOCALAPPDATA%\AIUsageOverlay` and starts the unified overlay.
 
 Or clone and run `Install.bat`. Login autostart uses `Start-Unified.vbs`.
+
+## Choose providers (first run)
+
+On a fresh install (no saved state yet), the overlay opens a calm checklist: **Which providers do you use?**
+
+- **Claude is off by default** for the stranger / demo path. Codex, Cursor, and Grok start on.
+- Uncheck anything you do not use. Unused providers stay **hidden** — no empty tile, no auth nag from that adapter.
+- Click **Continue**. Your choices persist with the rest of the HUD settings.
+
+Change later without reinstalling:
+
+1. Right-click the **AI** tray icon → **Providers**.
+2. Pick **Choose providers…** for the same checklist, or toggle a single provider (Show/Hide) under that submenu.
+
+Existing installs that already have a state file keep their current visibility; the picker does not reset them.
 
 ## First login (new users)
 
@@ -58,7 +73,7 @@ Footer defaults to the TravOS slab-T. Right-click the tray → **Set footer bran
 | Show / hide overlay | Left-click the **AI** tray icon |
 | Log in a provider | Right-click → Log in |
 | Set / reset footer mark | Right-click → Set footer brand… / Reset TravOS mark |
-| Show / hide a section | Right-click → Show/Hide provider |
+| Choose / show / hide providers | Right-click → **Providers** → Choose providers… or toggle one |
 | Expand / collapse | Click the section header |
 | History sparks | Right-click → Show history graph |
 | Refresh now | Right-click → Refresh now |
