@@ -196,6 +196,28 @@ function Format-ProviderVersionPlanBadge {
     return ('{0} · {1}' -f $ver, $plan)
 }
 
+
+function Get-ProviderStatNote {
+    # Hashtable + PSCustomObject reader (CodexStats is a Hashtable from Measure-CodexStats).
+    # Prefer this over $obj.PSObject.Properties['X'], which misses Hashtable keys.
+    param($Obj, [string]$Name)
+    if ($null -eq $Obj -or -not $Name) { return $null }
+    if (Get-Command Get-OverlayStatNote -ErrorAction SilentlyContinue) {
+        return Get-OverlayStatNote $Obj $Name
+    }
+    if ($Obj -is [System.Collections.IDictionary]) {
+        if ($Obj.Contains($Name)) { return $Obj[$Name] }
+        foreach ($k in @($Obj.Keys)) {
+            if ([string]$k -eq $Name) { return $Obj[$k] }
+        }
+        return $null
+    }
+    if ($Obj.PSObject -and $Obj.PSObject.Properties[$Name]) {
+        return $Obj.PSObject.Properties[$Name].Value
+    }
+    return $null
+}
+
 function Get-ProviderPlanLabel {
     param([Parameter(Mandatory = $true)][string]$Provider)
 
@@ -216,19 +238,12 @@ function Get-ProviderPlanLabel {
         '^(?i)grok$' {
             $s = $script:GrokUsage
             if (-not $s) { return $null }
-            $pt = $null
-            if (Get-Command Get-OverlayStatNote -ErrorAction SilentlyContinue) {
-                $pt = Get-OverlayStatNote $s 'PlanType'
-            }
-            if (-not $pt -and $s.PSObject.Properties['PlanType']) { $pt = $s.PlanType }
-            return Format-ProviderPlanLabel $pt
+            return Format-ProviderPlanLabel (Get-ProviderStatNote $s 'PlanType')
         }
         '^(?i)codex$' {
             $s = $script:CodexStats
-            if ($s -and $s.PSObject.Properties['PlanType'] -and $s.PlanType) {
-                return Format-ProviderPlanLabel $s.PlanType
-            }
-            return $null
+            if (-not $s) { return $null }
+            return Format-ProviderPlanLabel (Get-ProviderStatNote $s 'PlanType')
         }
         '^(?i)claude$' {
             # No stable plan tier on ClaudeIdentity today — omit rather than invent.

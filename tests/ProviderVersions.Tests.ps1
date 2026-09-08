@@ -97,4 +97,19 @@ Describe 'Get-ProviderPlanLabel sources' {
         $script:ClaudeIdentity = [pscustomobject]@{ Email = 'a@b.c'; Display = 'a@b.c' }
         Get-ProviderPlanLabel 'claude' | Should -BeNullOrEmpty
     }
+
+    It 'reads Codex PlanType from Hashtable (Measure-CodexStats shape)' {
+        $script:CodexStats = @{
+            WeekPct  = 12
+            PlanType = 'prolite'
+        }
+        Get-ProviderPlanLabel 'codex' | Should -Be 'Prolite'
+        Format-ProviderVersionPlanBadge -Version '0.146.0' -Plan (Get-ProviderPlanLabel 'codex') |
+            Should -Be '0.146.0 · Prolite'
+    }
+
+    It 'omits Codex plan when Hashtable PlanType is null' {
+        $script:CodexStats = @{ WeekPct = 12; PlanType = $null }
+        Get-ProviderPlanLabel 'codex' | Should -BeNullOrEmpty
+    }
 }
