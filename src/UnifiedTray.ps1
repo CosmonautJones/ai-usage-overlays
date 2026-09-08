@@ -193,6 +193,7 @@ function Invoke-ManualRefresh {
         $script:State.Message = 'refreshing...'
     }
 
+    if (Get-Command Clear-ProviderVersionCache -ErrorAction SilentlyContinue) { Clear-ProviderVersionCache }
     Start-AllRefreshJobs -Force
 
     if ($script:jobTimer -and -not $script:jobTimer.IsEnabled) {

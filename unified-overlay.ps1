@@ -395,6 +395,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\CursorData.ps1')
 . (Join-Path $script:AppDir 'src\GrokData.ps1')
 . (Join-Path $script:AppDir 'src\ProviderLogin.ps1')
+. (Join-Path $script:AppDir 'src\ProviderVersions.ps1')
 . (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')

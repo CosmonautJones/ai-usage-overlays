@@ -131,8 +131,12 @@ $xaml = @'
               <TextBlock x:Name="claudeChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
-              <TextBlock Grid.Column="1" Text="CLAUDE" Foreground="#E2E8F0"
-                         FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="CLAUDE" Foreground="#E2E8F0"
+                           FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="claudeVersionText" Text="--" Foreground="#5C7A96"
+                           FontSize="9" FontFamily="Consolas" VerticalAlignment="Center" Margin="8,1,0,0"/>
+              </StackPanel>
               <TextBlock x:Name="claudeHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
                          FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
@@ -381,8 +385,12 @@ $xaml = @'
               <TextBlock x:Name="codexChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
-              <TextBlock Grid.Column="1" Text="CODEX" Foreground="#E2E8F0"
-                         FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="CODEX" Foreground="#E2E8F0"
+                           FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="codexVersionText" Text="--" Foreground="#5C7A96"
+                           FontSize="9" FontFamily="Consolas" VerticalAlignment="Center" Margin="8,1,0,0"/>
+              </StackPanel>
               <TextBlock x:Name="codexHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
                          FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
@@ -545,8 +553,12 @@ $xaml = @'
               <TextBlock x:Name="cursorChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
-              <TextBlock Grid.Column="1" Text="CURSOR" Foreground="#E2E8F0"
-                         FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="CURSOR" Foreground="#E2E8F0"
+                           FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="cursorVersionText" Text="--" Foreground="#5C7A96"
+                           FontSize="9" FontFamily="Consolas" VerticalAlignment="Center" Margin="8,1,0,0"/>
+              </StackPanel>
               <TextBlock x:Name="cursorHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
                          FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
@@ -676,8 +688,12 @@ $xaml = @'
               <TextBlock x:Name="grokChevron" Grid.Column="0" Text="v"
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
-              <TextBlock Grid.Column="1" Text="GROK" Foreground="#E2E8F0"
-                         FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="GROK" Foreground="#E2E8F0"
+                           FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="grokVersionText" Text="--" Foreground="#5C7A96"
+                           FontSize="9" FontFamily="Consolas" VerticalAlignment="Center" Margin="8,1,0,0"/>
+              </StackPanel>
               <TextBlock x:Name="grokHeaderDetail" Grid.Column="2" Text="" Foreground="#7B9EC4"
                          FontSize="10" FontFamily="Consolas" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Grid>
@@ -1096,6 +1112,10 @@ function Apply-UnifiedTheme([string]$name) {
     foreach ($ln in @('reqLabel','reqLabelC')) {
         $rl = $script:window.FindName($ln)
         if ($rl) { $rl.Foreground = NewBrush $cfg }
+    }
+    foreach ($vn in @('claudeVersionText','codexVersionText','cursorVersionText','grokVersionText')) {
+        $ve = $script:window.FindName($vn)
+        if ($ve) { $ve.Foreground = NewBrush '#5C7A96' }
     }
     # Primary % accents track theme bar hues (refresh re-applies warn/crit).
     foreach ($pair in @(
@@ -1697,6 +1717,7 @@ function Update-AllSections {
     Update-CodexSection
     Update-CursorSection
     Update-GrokSection
+    if (Get-Command Update-ProviderVersionLabels -ErrorAction SilentlyContinue) { Update-ProviderVersionLabels }
 
     if (Get-Command Sync-CompactModeBodies -ErrorAction SilentlyContinue) { Sync-CompactModeBodies }
 
