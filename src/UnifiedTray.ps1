@@ -792,16 +792,25 @@ $script:updateItems['status'] = $miUpdateStatus
 Sync-UpdateMenuItems
 Add-Separator
 
-# Sections
-foreach ($pair in @(@('Show/Hide Claude','claude'), @('Show/Hide Codex','codex'), @('Show/Hide Cursor','cursor'), @('Show/Hide Grok','grok'))) {
+# Providers — first-run dialog + quick Show/Hide toggles
+$miProviders = New-StripItem 'Providers' $null
+$miChooseProviders = New-StripItem 'Choose providers…' {
+    if (Get-Command Invoke-ProviderPickerFromTray -ErrorAction SilentlyContinue) {
+        Invoke-ProviderPickerFromTray
+    }
+}
+[void]$miProviders.DropDownItems.Add($miChooseProviders)
+[void]$miProviders.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+foreach ($pair in @(@('Claude','claude'), @('Codex','codex'), @('Cursor','cursor'), @('Grok','grok'))) {
     $label = $pair[0]
     $key = $pair[1]
     $item = New-StripItem $label ([scriptblock]::Create("`$visible = -not (Get-SectionVisible '$key'); Set-SectionVisible '$key' `$visible; `$script:Cfg.Sections['$key'] = `$visible; Save-UnifiedState; Sync-SectionMenuItems"))
     $item.CheckOnClick = $false
     $item.Checked = Get-SectionVisible $key
     $script:sectionItems[$key] = $item
-    [void]$script:ctxStrip.Items.Add($item)
+    [void]$miProviders.DropDownItems.Add($item)
 }
+[void]$script:ctxStrip.Items.Add($miProviders)
 
 # Log in: spawn a visible CLI (`claude login` / `codex login` / `grok login`).
 Add-Separator

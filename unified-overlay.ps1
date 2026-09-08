@@ -399,6 +399,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
+. (Join-Path $script:AppDir 'src\ProviderPicker.ps1')
 . (Join-Path $script:AppDir 'src\QuakeView.ps1')
 . (Join-Path $script:AppDir 'src\Dropdown.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedTray.ps1')
@@ -775,6 +776,9 @@ function Complete-RefreshJobs {
 Load-UnifiedState
 Load-History
 if ($script:UnifiedStateNeedsRepair) { Save-UnifiedState }
+if (Get-Command Invoke-FirstRunProviderPickerIfNeeded -ErrorAction SilentlyContinue) {
+    Invoke-FirstRunProviderPickerIfNeeded
+}
 if (Test-DropdownMode) { Initialize-DropdownPinnedPosition }
 Sync-ViewModeMenuItems   # menu was built from defaults before state was read
 $script:State.Status  = 'init'
