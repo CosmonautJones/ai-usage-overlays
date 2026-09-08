@@ -661,8 +661,10 @@ function Start-AllRefreshJobs {
                 $elapsedSeconds = ((Get-Date) - $script:pollJobStartedAt[$jobKind]).TotalSeconds
                 if ($elapsedSeconds -gt $ceilingSeconds) {
                     Write-Log "Start-AllRefreshJobs: previous $jobKind refresh hung > $ceilingSeconds seconds; reaping and restarting."
-                    Stop-Job $existing -ErrorAction SilentlyContinue
-                    Remove-Job $existing -Force -ErrorAction SilentlyContinue
+                    # Bind by Id so real jobs and lightweight test doubles both work
+                    # (positional Stop-Job $obj tries -Id Int32[] and blows up on PSCustomObject).
+                    Stop-Job -Id $existing.Id -ErrorAction SilentlyContinue
+                    Remove-Job -Id $existing.Id -Force -ErrorAction SilentlyContinue
                     $script:pollJobs.Remove($jobKind)
                     $script:pollJobStartedAt.Remove($jobKind)
                 } else {
@@ -672,7 +674,7 @@ function Start-AllRefreshJobs {
             }
 
             if ($script:pollJobs.ContainsKey($jobKind)) {
-                Remove-Job $existing -Force -ErrorAction SilentlyContinue
+                Remove-Job -Id $existing.Id -Force -ErrorAction SilentlyContinue
                 $script:pollJobs.Remove($jobKind)
             }
         }

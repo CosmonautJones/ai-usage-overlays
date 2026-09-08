@@ -87,7 +87,10 @@ Initialize-UnifiedCfg
 function Save-UnifiedState {
     try {
         Initialize-UnifiedCfg
-        $dropdownActive = $false
+        # Match Test-DropdownMode without requiring Dropdown.ps1 to be loaded
+        # (Save-UnifiedState must not clobber pinned Left/Top while Quake is active).
+        $mode = [string]$script:Cfg['ViewMode']
+        $dropdownActive = ($mode -eq 'Quake' -or $mode -eq 'Dropdown')
         if (Get-Command Test-DropdownMode -ErrorAction SilentlyContinue) {
             $dropdownActive = Test-DropdownMode
         }
