@@ -399,7 +399,7 @@ $xaml = @'
           <StackPanel x:Name="codexBody">
            <StackPanel x:Name="codexFull">
             <!-- Auth trouble the user must act on (expired login). Collapsed when healthy. -->
-            <TextBlock x:Name="codexErrText" Text="" Foreground="#F87171"
+            <TextBlock x:Name="codexErrText" Text="" Foreground="#94A3B8"
                        FontSize="11" FontFamily="Bahnschrift SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
             <!-- 5-HOUR metric (hidden unless FiveHourPct is present) -->
@@ -701,7 +701,7 @@ $xaml = @'
 
           <StackPanel x:Name="grokBody">
            <StackPanel x:Name="grokFull">
-            <TextBlock x:Name="grokErrText" Text="" Foreground="#F87171"
+            <TextBlock x:Name="grokErrText" Text="" Foreground="#94A3B8"
                        FontSize="11" FontFamily="Bahnschrift SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
             <StackPanel Margin="0,0,0,10">
@@ -1307,7 +1307,19 @@ function Toggle-Section([string]$key) {
 function Update-ClaudeSection {
     $identityText = $script:window.FindName('claudeIdentityText')
     if ($identityText) {
-        $identityText.Text = if ($script:ClaudeIdentity -and $script:ClaudeIdentity.Display) { [string]$script:ClaudeIdentity.Display } else { '--' }
+        if ($script:ClaudeIdentity -and $script:ClaudeIdentity.Display) {
+            $identityText.Text = [string]$script:ClaudeIdentity.Display
+            try { $identityText.Foreground = NewBrush '#94A3B8' } catch { }
+        } else {
+            $claudeStatus = if ($script:State) { [string]$script:State.Status } else { '' }
+            $calm = Get-ProviderCalmEmptyMessage -CliName 'claude' -AuthState $claudeStatus
+            if ($calm) {
+                $identityText.Text = $calm
+            } else {
+                $identityText.Text = '--'
+            }
+            try { $identityText.Foreground = NewBrush '#94A3B8' } catch { }
+        }
     }
 
     $s = $script:Stats
@@ -1378,17 +1390,50 @@ function Update-ClaudeSection {
 # ---------------------------------------------------------------------------
 # Update-CodexSection - reads $script:CodexStats; fills codex* elements.
 # ---------------------------------------------------------------------------
-# Shared auth-error line renderer. Codex uses a dedicated TextBlock; Cursor
-# overloads its on-demand hero slot (see Update-CursorSection). Both decide via
-# Test-ProviderAuthFailed so "broken" means exactly one thing across providers.
+# Calm empty / missing-CLI / unauth copy. Strangers should see a quiet tray tip,
+# not red exception chrome or "run X login" dumps. Test-ProviderAuthFailed still
+# decides when to show the line; Resolve-ProviderLoginCli decides install vs login.
+function Test-ProviderCliMissing {
+    param([Parameter(Mandatory = $true)][string]$CliName)
+    if (-not (Get-Command Resolve-ProviderLoginCli -ErrorAction SilentlyContinue)) { return $false }
+    return $null -eq (Resolve-ProviderLoginCli $CliName)
+}
+
+function Get-ProviderCalmEmptyMessage {
+    param(
+        [Parameter(Mandatory = $true)][string]$CliName,
+        [string]$AuthState
+    )
+    if (Test-ProviderCliMissing $CliName) {
+        return 'Install & Log in from tray'
+    }
+    if (Test-ProviderAuthFailed $AuthState) {
+        return 'Log in from tray'
+    }
+    return $null
+}
+
 function Set-SectionAuthError {
-    param([string]$Name, [string]$AuthState, [string]$Message)
+    param(
+        [string]$Name,
+        [string]$AuthState,
+        [string]$Message,
+        [string]$CliName = $null
+    )
 
     $el = $script:window.FindName($Name)
     if (-not $el) { return $false }
 
-    if (Test-ProviderAuthFailed $AuthState) {
-        $el.Text = if ($Message) { $Message } else { 'Login required' }
+    $calm = $null
+    if ($CliName) {
+        $calm = Get-ProviderCalmEmptyMessage -CliName $CliName -AuthState $AuthState
+    } elseif (Test-ProviderAuthFailed $AuthState) {
+        $calm = 'Log in from tray'
+    }
+
+    if ($calm) {
+        $el.Text = $calm
+        try { $el.Foreground = NewBrush '#94A3B8' } catch { }
         $el.Visibility = [System.Windows.Visibility]::Visible
         return $true
     }
@@ -1416,7 +1461,7 @@ function Get-OverlayStatNote {
 }
 
 function Update-CodexSection {
-    Set-SectionAuthError 'codexErrText' $script:CodexAuthState $script:CodexErrMsg | Out-Null
+    Set-SectionAuthError 'codexErrText' $script:CodexAuthState $script:CodexErrMsg -CliName 'codex' | Out-Null
 
     $s = $script:CodexStats
     if (-not $s) {
@@ -1456,7 +1501,16 @@ function Update-CodexSection {
         }
     }
     Set-SectionBar 'codexWeekBar' 'codexWeekPct' 'codexWeekSub' 'codexWeekReset' $weekPct $weekResetsAt -AccentFg $script:AccentWeek
-    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $weekPct -AccentFg $script:AccentWeek
+    # Compact must track full WEEKLY %. Prefer live WeekPct; if compact still
+    # shows '--' while full has N%, re-paint compact from the full label.
+    $weekForCompact = $weekPct
+    if ($null -eq $weekForCompact) {
+        $fullPctEl = $script:window.FindName('codexWeekPct')
+        if ($fullPctEl -and [string]$fullPctEl.Text -match '^(\d+)%$') {
+            $weekForCompact = [double]$Matches[1]
+        }
+    }
+    Set-CompactBar 'codexWeekBarC' 'codexWeekPctC' $weekForCompact -AccentFg $script:AccentWeek
     Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
     Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
     $chd = $script:window.FindName('codexHeaderDetail'); if ($chd) { $chd.Text = Format-Reset $weekResetsAt }
@@ -1481,7 +1535,7 @@ function Update-CodexSection {
 # dot/time), renamed dup elements + namespaced error/fetch vars.
 # ---------------------------------------------------------------------------
 function Update-GrokSection {
-    Set-SectionAuthError 'grokErrText' $script:GrokAuthState $script:GrokErrMsg | Out-Null
+    Set-SectionAuthError 'grokErrText' $script:GrokAuthState $script:GrokErrMsg -CliName 'grok' | Out-Null
 
     $s = $script:GrokUsage
     if (-not $s) {
@@ -1602,8 +1656,8 @@ function Update-CursorSection {
     if ($od) {
         if (Test-ProviderAuthFailed $script:AuthState) {
             $od.FontSize = 11
-            $od.Text = $script:CursorErrMsg
-            $od.Foreground = NewBrush '#F87171'
+            $od.Text = 'Log in from tray'
+            $od.Foreground = NewBrush '#94A3B8'
         } else {
             $od.FontSize = 12
             if (($null -ne $plan.OnDemandEnabled) -and (-not $plan.OnDemandEnabled)) {
