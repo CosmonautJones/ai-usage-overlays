@@ -380,6 +380,10 @@ try {
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
                        System.Windows.Forms, System.Drawing, System.Xaml
 
+# WPF enables process DPI awareness lazily. Do this before WinForms creates
+# tray/menu handles, or Windows scales their screen coordinates a second time.
+[void][System.Windows.SystemParameters]::PrimaryScreenWidth
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ---------------------------------------------------------------------------

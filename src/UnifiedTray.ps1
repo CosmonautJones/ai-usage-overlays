@@ -72,18 +72,18 @@ function Toggle-Window {
     Toggle-PinnedWindow
 }
 
+function Get-ContextMenuScreenPoint {
+    # ContextMenuStrip.Show and Control.MousePosition share WinForms screen
+    # coordinates. WPF PointToScreen can use a different DPI coordinate space.
+    return [System.Windows.Forms.Control]::MousePosition
+}
+
 function Show-ContextMenuAtWpfPointer {
     param($EventArgs)
 
-    try {
-        $localPoint = $EventArgs.GetPosition($script:window)
-        $screenPoint = $script:window.PointToScreen($localPoint)
-        $script:ctxStrip.Show([int][math]::Round($screenPoint.X), [int][math]::Round($screenPoint.Y))
-        $EventArgs.Handled = $true
-    } catch {
-        $pt = [System.Windows.Forms.Control]::MousePosition
-        $script:ctxStrip.Show($pt.X, $pt.Y)
-    }
+    $pt = Get-ContextMenuScreenPoint
+    $EventArgs.Handled = $true
+    $script:ctxStrip.Show($pt)
 }
 
 function Quit-App {

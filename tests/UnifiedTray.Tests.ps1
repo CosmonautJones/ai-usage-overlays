@@ -29,10 +29,11 @@ Describe 'Unified tray refresh menu' {
         $refreshHandler | Should -Not -Match 'Get-CursorLocalStats'
     }
 
-    It 'positions the panel context menu from the WPF click point' {
+    It 'positions the panel context menu in the WinForms pointer coordinate space' {
         $script:UnifiedTraySource | Should -Match 'function Show-ContextMenuAtWpfPointer'
-        $script:UnifiedTraySource | Should -Match 'GetPosition\(\$script:window\)'
-        $script:UnifiedTraySource | Should -Match 'PointToScreen\(\$localPoint\)'
+        $script:UnifiedTraySource | Should -Match 'function Get-ContextMenuScreenPoint'
+        $script:UnifiedTraySource | Should -Match '\[System.Windows.Forms.Control\]::MousePosition'
+        $script:UnifiedTraySource | Should -Not -Match '\$script:window.PointToScreen\('
 
         $rightClickHandler = [regex]::Match(
             $script:UnifiedTraySource,
