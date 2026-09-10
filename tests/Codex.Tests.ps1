@@ -169,6 +169,7 @@ Describe 'Get-CodexSessionDirCandidates' {
 
 Describe 'Get-CodexStats' {
     BeforeEach {
+        $script:AppDir = $TestDrive
         $script:OriginalCodexEnvironment = @{}
         foreach ($name in @('CODEX_HOME', 'USERPROFILE', 'HOME', 'LOCALAPPDATA', 'APPDATA')) {
             $script:OriginalCodexEnvironment[$name] = [System.Environment]::GetEnvironmentVariable($name, 'Process')

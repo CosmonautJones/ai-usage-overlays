@@ -72,18 +72,18 @@ function Toggle-Window {
     Toggle-PinnedWindow
 }
 
+function Get-ContextMenuScreenPoint {
+    # ContextMenuStrip.Show and Control.MousePosition share WinForms screen
+    # coordinates. WPF PointToScreen can use a different DPI coordinate space.
+    return [System.Windows.Forms.Control]::MousePosition
+}
+
 function Show-ContextMenuAtWpfPointer {
     param($EventArgs)
 
-    try {
-        $localPoint = $EventArgs.GetPosition($script:window)
-        $screenPoint = $script:window.PointToScreen($localPoint)
-        $script:ctxStrip.Show([int][math]::Round($screenPoint.X), [int][math]::Round($screenPoint.Y))
-        $EventArgs.Handled = $true
-    } catch {
-        $pt = [System.Windows.Forms.Control]::MousePosition
-        $script:ctxStrip.Show($pt.X, $pt.Y)
-    }
+    $pt = Get-ContextMenuScreenPoint
+    $EventArgs.Handled = $true
+    $script:ctxStrip.Show($pt)
 }
 
 function Quit-App {
@@ -743,7 +743,22 @@ function Check-Alert([string]$key, $util, $resetAt = $null) {
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Dismiss current alert' { Dismiss-CurrentAlerts }))
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
-[void]$script:ctxStrip.Items.Add((New-StripItem 'Open claude.ai/usage' { Start-Process 'https://claude.ai/settings/usage' }))
+
+# Official vendor pages — one shared shape (provider → Usage + Docs). Hidden
+# HUD tiles still keep their links. Labels/URLs vary per vendor on purpose.
+$miPlatforms = New-StripItem 'Platforms' $null
+$linkGroups = Get-ProviderLinkMenuShape | Group-Object ProviderId
+foreach ($group in $linkGroups) {
+    $first = @($group.Group)[0]
+    $sub = New-StripItem $first.ProviderLabel $null
+    foreach ($link in @($group.Group)) {
+        $providerId = $link.ProviderId
+        $kind = $link.Kind
+        [void]$sub.DropDownItems.Add((New-StripItem $link.Label ([scriptblock]::Create("Open-ProviderLink -Provider '$providerId' -Kind '$kind'"))))
+    }
+    [void]$miPlatforms.DropDownItems.Add($sub)
+}
+[void]$script:ctxStrip.Items.Add($miPlatforms)
 Add-Separator
 
 # Brand (footer mark) - submenu keeps the strip short
@@ -788,6 +803,9 @@ $miUpdateStatus = New-StripItem 'Update status: unknown' $null
 $miUpdateStatus.Enabled = $false
 $script:updateItems['status'] = $miUpdateStatus
 [void]$miUpdates.DropDownItems.Add($miUpdateStatus)
+$miVersion = New-StripItem ("Version {0}" -f $script:AppVersion) $null
+$miVersion.Enabled = $false
+[void]$miUpdates.DropDownItems.Add($miVersion)
 [void]$script:ctxStrip.Items.Add($miUpdates)
 Sync-UpdateMenuItems
 Add-Separator

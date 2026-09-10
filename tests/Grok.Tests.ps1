@@ -136,6 +136,7 @@ Describe 'Get-GrokAccessToken' {
 
 Describe 'Get-GrokLiveUsage auth reporting' {
     BeforeEach {
+        Mock Get-GrokRemainingResets { @{ResetsAvailable=$null;ResetStatus='unavailable'} }
         $script:GrokAuthState = 'init'
         $script:GrokErrMsg    = ''
         $script:GrokUsage     = $null

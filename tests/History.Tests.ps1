@@ -200,6 +200,8 @@ Describe 'Complete-UnifiedHistoryPoll (D-HIST-1)' {
         Remove-Item -LiteralPath $script:HistoryPath -Force -ErrorAction SilentlyContinue
     }
     It 'two poll completes with Claude data null still produce two timestamps and non-null Codex/Grok keys' {
+        $script:CodexAuthState = 'ok'
+        $script:GrokAuthState = 'ok'
         $script:CodexStats = [pscustomobject]@{ FiveHourPct = 12; WeekPct = 80 }
         $script:GrokUsage = [pscustomobject]@{ WeekPct = 25 }
         Complete-UnifiedHistoryPoll

@@ -309,6 +309,103 @@ function ConvertFrom-GrokBillingResponse($obj) {
     }
 }
 
+# Minimal protobuf reader for the observed GetRemainingResets wire schema.
+# Token IDs are used only for deduplication and never returned or persisted.
+function Read-GrokVarint([byte[]]$Bytes, [ref]$Position) {
+    [long]$value = 0
+    for ($shift = 0; $shift -le 56; $shift += 7) {
+        if ($Position.Value -ge $Bytes.Length) { throw 'Truncated reset varint' }
+        $b = $Bytes[$Position.Value]; $Position.Value++
+        $value = $value -bor ([long]($b -band 127) -shl $shift)
+        if (($b -band 128) -eq 0) { return $value }
+    }
+    throw 'Invalid reset varint'
+}
+
+function Read-GrokWireFields([byte[]]$Bytes) {
+    $p = 0
+    while ($p -lt $Bytes.Length) {
+        $tag = Read-GrokVarint $Bytes ([ref]$p)
+        $number = $tag -shr 3; $wire = $tag -band 7
+        if ($number -le 0) { throw 'Invalid reset field' }
+        if ($wire -eq 0) {
+            $value = Read-GrokVarint $Bytes ([ref]$p)
+        } else {
+            $length = switch ($wire) { 1 { 8 } 2 { Read-GrokVarint $Bytes ([ref]$p) } 5 { 4 } default { throw 'Unsupported reset wire type' } }
+            if ($length -gt ($Bytes.Length - $p)) { throw 'Truncated reset field' }
+            $value = New-Object byte[] ([int]$length)
+            [Array]::Copy($Bytes, $p, $value, 0, [int]$length)
+            $p += [int]$length
+        }
+        [pscustomobject]@{ Number=$number; Wire=$wire; Value=$value }
+    }
+}
+
+function ConvertFrom-GrokResetsResponse {
+    param([byte[]]$Bytes, [datetimeoffset]$Now = [datetimeoffset]::UtcNow)
+    $p = 0; $payload = $null; $statusOk = $false
+    while ($p -lt $Bytes.Length) {
+        if ($Bytes.Length - $p -lt 5) { throw 'Truncated reset frame' }
+        $flag = $Bytes[$p]
+        [long]$length = ([long]$Bytes[$p+1]*16777216)+([long]$Bytes[$p+2]*65536)+([long]$Bytes[$p+3]*256)+$Bytes[$p+4]
+        $p += 5
+        if ($length -gt ($Bytes.Length - $p)) { throw 'Truncated reset payload' }
+        $body = New-Object byte[] ([int]$length)
+        [Array]::Copy($Bytes, $p, $body, 0, [int]$length); $p += [int]$length
+        if ($flag -eq 128) {
+            $trailers = [Text.Encoding]::ASCII.GetString($body)
+            if ($trailers -notmatch '(?m)^grpc-status:\s*0\s*\r?$') { throw 'Reset lookup returned a gRPC error' }
+            $statusOk = $true
+        } elseif ($flag -eq 0 -and $null -eq $payload -and -not $statusOk) {
+            $payload = $body
+        } else { throw 'Unexpected reset frame' }
+    }
+    if (-not $statusOk -or $null -eq $payload) { throw 'Incomplete reset response' }
+    $ids = [Collections.Generic.HashSet[string]]::new()
+    $expires = $null
+    foreach ($entry in @(Read-GrokWireFields $payload)) {
+        if ($entry.Number -ne 10) { throw 'Unrecognized reset response schema' }
+        if ($entry.Wire -ne 2) { throw 'Invalid reset record' }
+        $id = $null; $start = $null; $end = $null
+        foreach ($field in @(Read-GrokWireFields $entry.Value)) {
+            if ($field.Number -eq 10 -and $field.Wire -eq 2) {
+                $id = [Text.Encoding]::UTF8.GetString($field.Value)
+            } elseif ($field.Number -in @(20,30) -and $field.Wire -eq 2) {
+                $seconds = @(Read-GrokWireFields $field.Value | Where-Object { $_.Number -eq 1 -and $_.Wire -eq 0 })
+                if ($seconds.Count -ne 1) { throw 'Invalid reset timestamp' }
+                $date = [datetimeoffset]::FromUnixTimeSeconds($seconds[0].Value)
+                if ($field.Number -eq 20) { $start = $date } else { $end = $date }
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($id) -or $null -eq $start -or $null -eq $end -or $end -le $start) { throw 'Incomplete reset token' }
+        if ($start -le $Now -and $end -gt $Now) {
+            [void]$ids.Add($id)
+            if ($null -eq $expires -or $end -lt $expires) { $expires = $end }
+        }
+    }
+    $expiryText = if ($null -ne $expires) { $expires.ToString('o') } else { $null }
+    return @{ ResetsAvailable=$ids.Count; ResetExpiresAt=$expiryText; ResetStatus='ok'; ResetsObservedAt=$Now.ToString('o') }
+}
+
+function Get-GrokRemainingResets {
+    param([string]$Token, [int]$TimeoutSec = 8)
+    try {
+        $response = Invoke-WebRequest -Uri 'https://grok.com/prod_mc_billing.ConsumerUiSvc/GetRemainingResets' `
+            -Method Post -Headers @{ Authorization="Bearer $Token"; 'x-grok-client-mode'='cli'; Accept='application/grpc-web+proto'; 'connect-protocol-version'='1' } `
+            -ContentType 'application/grpc-web+proto' -Body ([byte[]]@(0,0,0,0,0)) `
+            -UseBasicParsing -TimeoutSec ([math]::Min(8,[math]::Max(1,$TimeoutSec))) -ErrorAction Stop
+        $stream = New-Object IO.MemoryStream
+        try {
+            $response.RawContentStream.Position = 0
+            $response.RawContentStream.CopyTo($stream)
+            return ConvertFrom-GrokResetsResponse $stream.ToArray()
+        } finally { $stream.Dispose() }
+    } catch {
+        # Reset lookup failure must not discard successfully fetched usage.
+        return @{ ResetsAvailable=$null; ResetExpiresAt=$null; ResetStatus='unavailable'; ResetsObservedAt=$null }
+    }
+}
+
 function Get-GrokLiveUsage {
     param(
         [int]$TimeoutSec = 15,
@@ -327,7 +424,7 @@ function Get-GrokLiveUsage {
     try {
         $auth = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
     } catch {
-        Write-GrokLog "Get-GrokLiveUsage: cannot read auth.json - $($_.Exception.Message)"
+        Write-GrokLog 'Get-GrokLiveUsage: cannot read auth.json'
         Set-GrokAuthState 'notoken' 'run grok login'
         return $null
     }
@@ -349,19 +446,22 @@ function Get-GrokLiveUsage {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $resp = Invoke-RestMethod -Uri 'https://cli-chat-proxy.grok.com/v1/billing?format=credits' `
             -Headers $headers -Method GET -TimeoutSec $TimeoutSec
+        if (-not $resp -or -not $resp.config) { throw 'Unrecognized Grok billing response' }
         Set-GrokAuthState 'ok' ''
         $parsed = ConvertFrom-GrokBillingResponse $resp
+        $resetInfo = Get-GrokRemainingResets -Token $token -TimeoutSec $TimeoutSec
+        foreach ($key in $resetInfo.Keys) { $parsed[$key] = $resetInfo[$key] }
         $script:GrokUsage = $parsed
         return $parsed
     } catch {
         $message = $_.Exception.Message
-        Write-GrokLog "Get-GrokLiveUsage: request failed - $message"
         $code = $null
         if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
+        Write-GrokLog "Get-GrokLiveUsage: request failed (HTTP $code)"
         if ($code -eq 401 -or $message -match '\b401\b') {
             Set-GrokAuthState 'auth' 'Grok login expired - run grok login'
         } else {
-            Set-GrokAuthState 'stale' $message
+            Set-GrokAuthState 'stale' 'Grok usage unavailable; retry later'
         }
         return $null
     }

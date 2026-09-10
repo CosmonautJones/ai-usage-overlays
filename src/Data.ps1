@@ -271,14 +271,26 @@ function Get-CachedClaudeProfile {
         if (-not $raw) { return $null }
 
         $json = $raw | ConvertFrom-Json -ErrorAction Stop
+        $tokenHash = [string]$json.TokenHash
+        if ($json.Token) {
+            $tokenHash = Get-ClaudeTokenHash ([string]$json.Token)
+            Save-ClaudeProfile -Token ([string]$json.Token) -Identity $json.Identity
+        }
         return @{
-            Token    = [string]$json.Token
+            TokenHash = $tokenHash
             Identity = $json.Identity
         }
     } catch {
         Write-Log "Claude profile cache load failed - $($_.Exception.Message)"
         return $null
     }
+}
+
+function Get-ClaudeTokenHash([string]$Token) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Token)))).Replace('-', '').ToLowerInvariant()
+    } finally { $sha.Dispose() }
 }
 
 function Save-ClaudeProfile {
@@ -289,7 +301,7 @@ function Save-ClaudeProfile {
 
     try {
         [pscustomobject]@{
-            Token    = $Token
+            TokenHash = Get-ClaudeTokenHash $Token
             Identity = $Identity
         } | ConvertTo-Json -Depth 6 | Set-Content -Path (Get-ClaudeProfilePath) -Encoding UTF8
     } catch {
@@ -533,7 +545,7 @@ function Get-Usage {
     # failure) is never re-hit, which is what stopped the every-poll /profile
     # 401s from escalating into a rate limit.
     $cached = Get-CachedClaudeProfile
-    if ($cached -and $cached.Token -eq $tok) {
+    if ($cached -and $cached.TokenHash -eq (Get-ClaudeTokenHash $tok)) {
         $script:ClaudeIdentity = $cached.Identity
     } else {
         try {

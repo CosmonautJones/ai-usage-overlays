@@ -44,6 +44,62 @@ Describe 'Test-UnifiedFirstRun' {
     }
 }
 
+Describe 'Persisted settings round-trip' {
+    BeforeEach {
+        $script:StatePath = Join-Path $TestDrive ("unified-state-" + [guid]::NewGuid().ToString('N') + '.json')
+        $script:window = $null
+        $script:Cfg = @{}
+        Initialize-UnifiedCfg
+    }
+
+    It 'treats a missing state file as first run and does not write one' {
+        Test-UnifiedFirstRun | Should -BeTrue
+        Load-UnifiedState
+        (Test-Path -LiteralPath $script:StatePath) | Should -BeFalse
+        $script:Cfg.Sections.claude | Should -BeFalse
+        $script:Cfg.Sections.codex | Should -BeTrue
+    }
+
+    It 'does not reset an existing state file to first-run defaults' {
+        $script:Cfg.Theme = 'Nord'
+        $script:Cfg.Opacity = 0.6
+        $script:Cfg.Compact = $true
+        $script:Cfg.ShowStats = $false
+        $script:Cfg.ShowGraph = $true
+        $script:Cfg.ShowAlerts = $false
+        $script:Cfg.ViewMode = 'Quake'
+        $script:Cfg.StartHidden = $true
+        $script:Cfg.DropdownHotkey = 'Shift+F12'
+        $script:Cfg.DropdownMonitor = 'Active'
+        $script:Cfg.DropdownHideOnFocusLoss = $true
+        $script:Cfg.Sections = @{ claude = $true; codex = $false; cursor = $true; grok = $true }
+        Save-UnifiedState
+        (Test-Path -LiteralPath $script:StatePath) | Should -BeTrue
+
+        $script:Cfg = @{}
+        Initialize-UnifiedCfg
+        Test-UnifiedFirstRun | Should -BeFalse
+        Load-UnifiedState
+
+        $script:Cfg.Theme | Should -Be 'Nord'
+        [double]$script:Cfg.Opacity | Should -Be 0.6
+        [bool]$script:Cfg.Compact | Should -BeTrue
+        [bool]$script:Cfg.ShowStats | Should -BeFalse
+        [bool]$script:Cfg.ShowGraph | Should -BeTrue
+        [bool]$script:Cfg.ShowAlerts | Should -BeFalse
+        $script:Cfg.ViewMode | Should -Be 'Quake'
+        [bool]$script:Cfg.StartHidden | Should -BeTrue
+        $script:Cfg.DropdownHotkey | Should -Be 'Shift+F12'
+        $script:Cfg.DropdownMonitor | Should -Be 'Active'
+        [bool]$script:Cfg.DropdownHideOnFocusLoss | Should -BeTrue
+        [bool]$script:Cfg.Sections.claude | Should -BeTrue
+        [bool]$script:Cfg.Sections.codex | Should -BeFalse
+        (Get-OverlayPersistedSettingKeys) | Should -Contain 'Theme'
+        (Get-OverlayPersistedSettingKeys) | Should -Contain 'ViewMode'
+        (Get-OverlayPersistedSettingKeys) | Should -Contain 'StartHidden'
+    }
+}
+
 Describe 'Picker wiring' {
     BeforeAll {
         $root = Split-Path $PSScriptRoot -Parent

@@ -31,7 +31,7 @@ Describe 'Quake extra usage' {
 
 Describe 'Quake monitor selection' {
     BeforeAll {
-        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing, PresentationFramework
         $root = Split-Path $PSScriptRoot -Parent
         function Write-Log { param([string]$Message) }
         . (Join-Path $root 'src\Dropdown.ps1')
@@ -47,6 +47,8 @@ Describe 'Quake monitor selection' {
     }
 
     It 'resizes the visible strip after changing monitors' {
+        # Resize-QuakeToContent lives in QuakeView.ps1; stub so Mock/Invoke work in isolation.
+        function Resize-QuakeToContent {}
         Mock Resize-QuakeToContent {}
         Mock Get-DropdownGeometry { @{ Left = 1920.0; ShownTop = 0.0 } }
 
@@ -60,9 +62,12 @@ Describe 'Quake monitor selection' {
 
 Describe 'Quake pinned geometry persistence' {
     BeforeAll {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
         $root = Split-Path $PSScriptRoot -Parent
         function Write-Log { param([string]$Message) }
         . (Join-Path $root 'src\UnifiedState.ps1')
+        # Initialize-DropdownPinnedPosition + Test-DropdownMode live here.
+        . (Join-Path $root 'src\Dropdown.ps1')
     }
 
     BeforeEach {

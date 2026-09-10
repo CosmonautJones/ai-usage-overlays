@@ -1,7 +1,7 @@
 # Builds the Inno Setup installer artifact.
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.4.1',
     [string]$OutputDir = (Join-Path $PSScriptRoot '..\dist')
 )
 

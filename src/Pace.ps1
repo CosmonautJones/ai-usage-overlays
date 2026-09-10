@@ -102,7 +102,7 @@ function Get-PaceVerdict {
         $advice  = "Burning $([math]::Round($actual,3)) %/min vs $([math]::Round($required,3)) allowed; projected $([math]::Round($projected))% at reset. Do not start new agents."
     } elseif ($projected -lt ($script:PaceCeiling - $script:PaceBand)) {
         $verdict = 'ACCELERATE'
-        $advice  = "Only projected to reach $([math]::Round($projected))% of a $($script:PaceCeiling)% budget. Spare capacity — start more work."
+        $advice  = "Only projected to reach $([math]::Round($projected))% of a $($script:PaceCeiling)% budget. Spare capacity: start more work."
     } else {
         $advice = "Projected $([math]::Round($projected))% at reset, inside the band. Hold concurrency."
     }

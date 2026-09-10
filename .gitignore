@@ -1,5 +1,7 @@
 # Credentials / secrets — NEVER commit (public remote)
 claude-profile.json
+claude-backoff.json
+claude-credential-preference.json
 **/.credentials.json
 wsl-mirror/
 

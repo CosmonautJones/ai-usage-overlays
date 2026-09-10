@@ -21,12 +21,24 @@ Describe 'Unified overlay CLI snapshot mode' {
     }
 
     It 'declares the versioned JSON schema and normalized provider envelope' {
-        $script:UnifiedOverlaySource | Should -Match "schema = 'ai-usage\.snapshot\.v1'"
-        $script:UnifiedOverlaySource | Should -Match 'providers = \$providers'
+        $root = Split-Path $PSScriptRoot -Parent
+        $exportSource = Get-Content (Join-Path $root 'src\Export.ps1') -Raw -Encoding UTF8
+        $exportSource | Should -Match "schema\s*=\s*'ai-usage\.snapshot\.v1'"
+        $script:UnifiedOverlaySource | Should -Match 'New-UnifiedSnapshotDocument'
+        $script:UnifiedOverlaySource | Should -Match 'Providers \$providers'
         $script:UnifiedOverlaySource | Should -Match 'claude = New-SkippedProviderSnapshot'
         $script:UnifiedOverlaySource | Should -Match 'codex\s+= New-SkippedProviderSnapshot'
         $script:UnifiedOverlaySource | Should -Match 'cursor = New-SkippedProviderSnapshot'
         $script:UnifiedOverlaySource | Should -Match 'grok\s+= New-SkippedProviderSnapshot'
+    }
+
+    It 'defaults snapshot Provider selection to all four adapters' {
+        $script:UnifiedOverlaySource | Should -Match "@\('Claude', 'Codex', 'Cursor', 'Grok'\)"
+        $fnDefault = [regex]::Match(
+            $script:UnifiedOverlaySource,
+            'function Invoke-OverlaySnapshot \{[\s\S]*?\[string\[\]\]\$Provider = @\(''Claude'', ''Codex'', ''Cursor'', ''Grok''\)'
+        )
+        $fnDefault.Success | Should -BeTrue
     }
 
     It 'filters providers before invoking provider data fetchers' {

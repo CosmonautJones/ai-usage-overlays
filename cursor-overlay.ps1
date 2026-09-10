@@ -70,6 +70,10 @@ function Log([string]$msg) { Add-Content -Path $script:ErrLog -Value "$(Get-Date
 Log "Starting up"
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
                        System.Windows.Forms, System.Drawing, System.Xaml
+
+# WPF enables process DPI awareness lazily. Do this before WinForms creates
+# tray/menu handles, or Windows scales their screen coordinates a second time.
+[void][System.Windows.SystemParameters]::PrimaryScreenWidth
 Log "Assemblies loaded"
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,8 @@ $script:AuthState       = 'init'
 $script:CursorLastFetch = ''
 $script:CursorErrMsg    = ''
 
-function Fmt-Num([double]$n) {
+function Fmt-Num($n) {
+    if ($null -eq $n) { return '--' }
     if ($n -ge 1e6) { return ('{0:0.0}M' -f ($n / 1e6)) }
     if ($n -ge 1e3) { return ('{0:0}k'   -f ($n / 1e3)) }
     return ('{0:0}' -f $n)
@@ -29,7 +30,8 @@ function ConvertTo-CursorSummaryMetric($value) {
 
 function Get-CursorDisplayMessagePercent([string]$Message) {
     if ([string]::IsNullOrWhiteSpace($Message)) { return $null }
-    $m = [regex]::Match($Message, '(\d+(?:\.\d+)?)\s*%')
+    # Only recognize an explicit usage sentence, never an unrelated/remaining %.
+    $m = [regex]::Match($Message, '(?i)\bused\s+(\d+(?:\.\d+)?)\s*%')
     if (-not $m.Success) { return $null }
     return ConvertTo-CursorSummaryMetric $m.Groups[1].Value
 }
@@ -189,7 +191,7 @@ function Get-CursorToken {
         try {
             $parts = $tok -split '\.'
             if ($parts.Count -ge 2) {
-                $b64 = $parts[1]
+                $b64 = $parts[1].Replace('-', '+').Replace('_', '/')
                 $pad = $b64.Length % 4
                 if ($pad -ne 0) { $b64 += '=' * (4 - $pad) }
                 $payload = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)) | ConvertFrom-Json
@@ -207,6 +209,8 @@ function Get-CursorToken {
 function Get-CursorUsage {
     param([int]$TimeoutSec = 20)
 
+    $script:LiveData = $null
+    $script:SummaryData = $null
     $tok, $userId, $email = Get-CursorToken
     if (-not $tok -or -not $userId) {
         $script:AuthState = 'notoken'; $script:CursorErrMsg = 'Cannot read Cursor token from state.vscdb'
@@ -229,11 +233,21 @@ function Get-CursorUsage {
         else                { $script:AuthState = 'stale'; $script:CursorErrMsg = $_.Exception.Message }
     }
 
-    # Also fetch usage-summary for on-demand spend
+    # The displayed quota comes from summary, so its result owns refresh status.
     try {
-        $script:SummaryData = Invoke-RestMethod 'https://cursor.com/api/usage-summary' `
+        $summary = Invoke-RestMethod 'https://cursor.com/api/usage-summary' `
             -WebSession $session -Headers @{ Authorization = "Bearer $tok" } -TimeoutSec $TimeoutSec
-    } catch { }
+        if (-not $summary -or -not $summary.individualUsage) { throw 'Unrecognized Cursor usage-summary response' }
+        $script:SummaryData = $summary
+        $script:AuthState = 'ok'
+        $script:CursorErrMsg = ''
+        $script:CursorLastFetch = (Get-Date -Format 'HH:mm')
+    } catch {
+        $code = $null
+        if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
+        $script:AuthState = if ($code -in @(401, 403)) { 'auth' } else { 'stale' }
+        $script:CursorErrMsg = 'Cursor usage summary unavailable'
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -246,6 +260,7 @@ function Get-CursorUsage {
 function Get-CursorLocalStats {
     param([int]$TimeoutSec = 20)
 
+    $script:LocalData = $null
     $tok, $userId, $email = Get-CursorToken
     if (-not $tok -or -not $userId) { return }
     $session = New-CursorWebSession -UserId $userId -Token $tok
@@ -259,12 +274,15 @@ function Get-CursorLocalStats {
     # date is UTC-midnight ms; match the bucket whose day == today (UTC).
     $todayMs = [System.DateTimeOffset]::new([datetime]::UtcNow.Date, [TimeSpan]::Zero).ToUnixTimeMilliseconds()
 
-    $edits30d = 0; $editsToday = 0; $linesAcc = 0
+    $edits30d = 0L; $editsToday = $null; $linesAcc = 0L
+    $hasEdits = $true; $hasLines = $true
     $models = @{}
     foreach ($day in $a.dailyMetrics) {
-        $edits30d += [int]$day.totalApplies
-        $linesAcc += [int]$day.acceptedLinesAdded
-        if ([long]$day.date -eq $todayMs) { $editsToday = [int]$day.totalApplies }
+        if ($null -eq $day.totalApplies) { $hasEdits = $false }
+        else { $edits30d += [long]$day.totalApplies }
+        if ($null -eq $day.acceptedLinesAdded) { $hasLines = $false }
+        else { $linesAcc += [long]$day.acceptedLinesAdded }
+        if ([long]$day.date -eq $todayMs -and $null -ne $day.totalApplies) { $editsToday = [long]$day.totalApplies }
         foreach ($m in $day.modelUsage) {
             if ($m.name) { $models[$m.name] = [int]$models[$m.name] + [int]$m.count }
         }
@@ -278,10 +296,10 @@ function Get-CursorLocalStats {
     $topPct = if ($totalModel -gt 0) { [int][Math]::Round($topCount * 100.0 / $totalModel) } else { 0 }
 
     $script:LocalData = [PSCustomObject]@{
-        edits30d      = $edits30d
+        edits30d      = if ($hasEdits) { $edits30d } else { $null }
         editsToday    = $editsToday
         topModel      = $topModel
         topPct        = $topPct
-        linesAccepted = $linesAcc
+        linesAccepted = if ($hasLines) { $linesAcc } else { $null }
     }
 }

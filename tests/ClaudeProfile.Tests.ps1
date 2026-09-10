@@ -168,9 +168,9 @@ Describe 'Get-Usage Claude profile behavior' {
         Get-Usage
 
         $script:State.Status | Should -Be 'ok'
-        $saved = Get-Content (Get-ClaudeCredentialPreferencePath) -Raw
-        $saved | Should -Match [regex]::Escape($script:CredPath)
-        $saved | Should -Not -Match 'token-123'
+        $pref = Get-Content (Get-ClaudeCredentialPreferencePath) -Raw | ConvertFrom-Json
+        $pref.CredentialPath | Should -Be $script:CredPath
+        ($pref | ConvertTo-Json -Compress) | Should -Not -Match 'token-123'
         Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
     }
 }
