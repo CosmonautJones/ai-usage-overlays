@@ -391,102 +391,48 @@ function Position-Window {
     }
 }
 
-function Get-ClaudeQuotaExportWindowSpecs {
+function Get-OverlayPersistedSettingKeys {
     @(
-        [PSCustomObject]@{ Field = 'seven_day_fable';      Label = 'Fable' }
-        [PSCustomObject]@{ Field = 'seven_day_opus';       Label = 'Opus' }
-        [PSCustomObject]@{ Field = 'seven_day_sonnet';     Label = 'Sonnet' }
-        [PSCustomObject]@{ Field = 'seven_day_oauth_apps'; Label = 'OAuth apps' }
-        [PSCustomObject]@{ Field = 'seven_day_omelette';   Label = 'Omelette' }
-        [PSCustomObject]@{ Field = 'seven_day_cowork';     Label = 'Cowork' }
+        'Theme'
+        'Opacity'
+        'Compact'
+        'ShowStats'
+        'ShowGraph'
+        'ShowAlerts'
+        'ViewMode'
+        'StartHidden'
+        'Sections'
+        'AutoCheckUpdates'
+        'DropdownHotkey'
+        'DropdownMonitor'
+        'DropdownHideOnFocusLoss'
+        'Left'
+        'Top'
     )
-}
-
-function Format-ClaudeQuotaWindowLine {
-    param(
-        [string]$Label,
-        [object]$Window,
-        [switch]$IncludeUtilization
-    )
-
-    if (-not $Window) { return $null }
-
-    $used = [math]::Round([double]$Window.utilization)
-    $remaining = [math]::Round(100 - [double]$Window.utilization)
-    $suffixParts = @()
-    if ($IncludeUtilization) { $suffixParts += "$used% used" }
-    $reset = Format-Reset $Window.resets_at
-    if ($reset) { $suffixParts += $reset }
-    $suffix = if ($suffixParts.Count -gt 0) { ' (' + ($suffixParts -join ', ') + ')' } else { '' }
-
-    return ('{0}: {1}% remaining{2}' -f $Label, $remaining, $suffix)
-}
-
-function Get-ClaudeQuotaStatLines {
-    param(
-        [object]$Data,
-        [string]$Prefix = 'Claude '
-    )
-
-    if (-not $Data) { return @() }
-
-    $lines = @()
-    if ($Data.five_hour) {
-        $lines += Format-ClaudeQuotaWindowLine "$($Prefix)5-hour" $Data.five_hour
-    }
-    if ($Data.seven_day) {
-        $lines += Format-ClaudeQuotaWindowLine "$($Prefix)weekly" $Data.seven_day
-    }
-    foreach ($spec in Get-ClaudeQuotaExportWindowSpecs) {
-        $window = $Data.PSObject.Properties[$spec.Field].Value
-        if ($window) {
-            $lines += Format-ClaudeQuotaWindowLine "$Prefix$($spec.Label)" $window -IncludeUtilization
-        }
-    }
-    return $lines
 }
 
 function Copy-Stats {
-    $d = $script:State.Data
-    $s = $script:Stats
-    $lines = @("AI Usage Overlay - $(Get-Date -Format 'yyyy-MM-dd HH:mm')")
-
-    if ($d) {
-        if ($script:ClaudeIdentity -and $script:ClaudeIdentity.Display) {
-            $lines += "Claude account: $($script:ClaudeIdentity.Display)"
-        }
-        $lines += Get-ClaudeQuotaStatLines $d
+    $sections = $null
+    if ($script:Cfg -is [System.Collections.IDictionary] -and $script:Cfg.Contains('Sections')) {
+        $sections = $script:Cfg['Sections']
     }
 
-    if ($s) {
-        $lines += "Claude est. API value: ~$(Fmt-Money $s.ValueUSD) all-time"
-        $lines += "Claude tokens: $(Fmt-Tok $s.InTokens) in / $(Fmt-Tok $s.OutTokens) out"
-        $lines += "Claude today after-hours: $(Fmt-Tok $s.TodayAfterHoursTok) tokens / $($s.TodayAfterHoursMsg) msgs"
-        $lines += "Claude lifetime: $($s.Sessions) sessions / $(Fmt-Tok $s.Messages) msgs"
+    $usage = $null
+    if ($script:State -is [System.Collections.IDictionary] -and $script:State.Contains('Data')) {
+        $usage = $script:State['Data']
+    } elseif ($script:State) {
+        $usage = $script:State.Data
     }
 
-    if ($script:CodexStats) {
-        $cs = $script:CodexStats
-        $lines += "Codex est. API value: ~$(Fmt-Money $cs.ValueUSD) all-time"
-        $lines += "Codex tokens: $(Fmt-Tok $cs.InTokens) in / $(Fmt-Tok $cs.OutTokens) out"
-        $lines += "Codex today after-hours: $(Fmt-Tok $cs.TodayAfterHoursTok) tokens / $($cs.TodayAfterHoursMsg) msgs"
-        $lines += "Codex lifetime: $($cs.Sessions) sessions / $(Fmt-Tok $cs.Messages) msgs"
-    }
-
-    if ($script:LocalData) {
-        $ld = $script:LocalData
-        $lines += "Cursor edits: $($ld.edits30d) (30d) / $($ld.editsToday) today"
-        if ($ld.topModel)      { $lines += "Cursor top model: $($ld.topModel) $($ld.topPct)%" }
-        if ($ld.linesAccepted) { $lines += "Cursor AI lines accepted (30d): $($ld.linesAccepted)" }
-    }
-
-
-    if ($script:GrokUsage) {
-        $g = $script:GrokUsage
-        if ($g.PlanType) { $lines += "Grok plan: $($g.PlanType)" }
-        if ($null -ne $g.WeekPct) { $lines += ("Grok weekly: {0:0}% used" -f [double]$g.WeekPct) }
-        if ($g.PrepaidBalance) { $lines += "Grok prepaid: $($g.PrepaidBalance)" }
-    }
+    $lines = Get-UnifiedExportLines `
+        -ClaudeIdentity $script:ClaudeIdentity `
+        -ClaudeUsage $usage `
+        -ClaudeStats $script:Stats `
+        -CodexStats $script:CodexStats `
+        -CursorSummary $script:SummaryData `
+        -CursorLocal $script:LocalData `
+        -GrokUsage $script:GrokUsage `
+        -Sections $sections
 
     [System.Windows.Clipboard]::SetText(($lines -join "`n"))
 }

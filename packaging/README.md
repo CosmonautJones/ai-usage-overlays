@@ -7,7 +7,7 @@ For the full contributor workflow, including issue creation, pull requests, rele
 ## Current Behavior Captured
 
 - Install target stays per-user at `%LOCALAPPDATA%\AIUsageOverlay`, matching `install.ps1`.
-- Install copies the existing PowerShell app files, including `unified-overlay.ps1`, `Start-Unified.vbs`, `sqlite3.exe`, and `src\*.ps1`.
+- Install copies the existing PowerShell app files, including `unified-overlay.ps1`, `Start-Unified.vbs`, `sqlite3.exe`, `src\*.ps1`, `README.md`, and `LICENSE`.
 - Install verifies Windows PowerShell 5.1 or PowerShell 7+ is available, then runs `unified-overlay.ps1 -Install`.
 - `unified-overlay.ps1 -Install` creates or updates the Startup-folder shortcut at `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\AIUsageOverlay.lnk`.
 - Startup and Start Menu launches use `wscript.exe Start-Unified.vbs`, which prefers `pwsh` and falls back to Windows PowerShell 5.1 so no separate PowerShell install is required.

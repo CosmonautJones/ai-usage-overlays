@@ -11,21 +11,25 @@ permissions:
 
 jobs:
   pester:
-    name: Pester
+    name: Pester (${{ matrix.shell }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Install Pester 5
-        shell: pwsh
+        shell: ${{ matrix.shell }}
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0 -MaximumVersion 5.99.99 -SkipPublisherCheck
           Get-Module Pester -ListAvailable | Select-Object -First 3 | Format-Table Name, Version
 
       - name: Run Pester suites
-        shell: pwsh
+        shell: ${{ matrix.shell }}
         run: |
           Import-Module Pester -MinimumVersion 5.5.0
           $cfg = New-PesterConfiguration

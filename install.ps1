@@ -26,17 +26,9 @@ $ps = (Get-Command pwsh -ErrorAction SilentlyContinue)
 if (-not $ps) { $ps = (Get-Command powershell.exe -ErrorAction Stop) }
 
 Write-Host 'Installing unified AI usage overlay...'
+. (Join-Path $src 'src\InstallManifest.ps1')
 $dest = "$env:LOCALAPPDATA\AIUsageOverlay"
-New-Item -ItemType Directory -Force $dest | Out-Null
-New-Item -ItemType Directory -Force (Join-Path $dest 'src') | Out-Null
-
-Copy-Item "$src\unified-overlay.ps1" $dest -Force
-Copy-Item "$src\Start-Unified.vbs"   $dest -Force
-Copy-Item "$src\Install.bat"         $dest -Force
-Copy-Item "$src\Uninstall.bat"       $dest -Force
-Copy-Item "$src\sqlite3.exe"         $dest -Force
-Copy-Item "$src\src\*"               (Join-Path $dest 'src') -Recurse -Force
-if (Test-Path "$src\assets") { Copy-Item "$src\assets" $dest -Recurse -Force }
+Copy-OverlayInstallFiles -SourceRoot $src -DestRoot $dest
 
 & $ps.Source -STA -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$dest\unified-overlay.ps1" -Install
 

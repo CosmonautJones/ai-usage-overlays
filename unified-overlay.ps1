@@ -172,20 +172,9 @@ function Resolve-SnapshotProviders {
     return $selected
 }
 
-function New-SkippedProviderSnapshot {
-    param([string]$Reason = 'Provider was not selected.')
-
-    [ordered]@{
-        selected = $false
-        status   = 'skipped'
-        message  = $Reason
-        error    = $null
-    }
-}
-
 function Invoke-OverlaySnapshot {
     param(
-        [string[]]$Provider = @('Claude', 'Codex', 'Cursor'),
+        [string[]]$Provider = @('Claude', 'Codex', 'Cursor', 'Grok'),
         [switch]$ClaudeOnly,
         [switch]$CodexOnly,
         [switch]$CursorOnly,
@@ -208,6 +197,8 @@ function Invoke-OverlaySnapshot {
     . (Join-Path $script:AppDir 'src\CursorData.ps1')
     . (Join-Path $script:AppDir 'src\GrokData.ps1')
     . (Join-Path $script:AppDir 'src\Update.ps1')
+    . (Join-Path $script:AppDir 'src\ProviderLinks.ps1')
+    . (Join-Path $script:AppDir 'src\Export.ps1')
 
     $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
     $script:Stats = $null
@@ -271,17 +262,15 @@ function Invoke-OverlaySnapshot {
             $claudeStatus = 'unavailable'
         }
 
-        $providers.claude = [ordered]@{
-            selected = $true
-            status = $claudeStatus
-            message = $script:State.Message
-            lastFetch = $script:State.LastFetch
-            identity = $script:ClaudeIdentity
-            usage = $script:State.Data
-            stats = $script:Stats
-            error = $claudeError
-            statsError = $claudeStatsError
-        }
+        $providers.claude = New-ClaudeProviderSnapshot `
+            -Status $claudeStatus `
+            -Message $script:State.Message `
+            -LastFetch $script:State.LastFetch `
+            -Identity $script:ClaudeIdentity `
+            -Usage $script:State.Data `
+            -Stats $script:Stats `
+            -FetchError $claudeError `
+            -StatsError $claudeStatsError
     }
     if ($selectedProviders['codex']) {
         # Aligned with cursor below: an auth failure outranks successfully parsed
@@ -290,63 +279,50 @@ function Invoke-OverlaySnapshot {
         $codexStatus =
             if ($script:CodexAuthState -eq 'notoken') { 'unavailable' }
             elseif (Test-ProviderAuthFailed $script:CodexAuthState) { $script:CodexAuthState }
+            elseif ($script:CodexAuthState -eq 'stale') { 'stale' }
             elseif ($script:CodexStats) { 'ok' }
             elseif ($codexError) { 'error' }
             else { 'unavailable' }
 
-        $providers.codex = [ordered]@{
-            selected = $true
-            status = $codexStatus
-            message = $script:CodexErrMsg
-            stats = $script:CodexStats
-            error = $codexError
-        }
+        $providers.codex = New-CodexProviderSnapshot `
+            -Status $codexStatus `
+            -Message $script:CodexErrMsg `
+            -Stats $script:CodexStats `
+            -FetchError $codexError
     }
     if ($selectedProviders['cursor']) {
         $cursorError = if ($cursorUsageError) { $cursorUsageError } else { $cursorStatsError }
         $cursorStatus = if ($script:AuthState -eq 'notoken') { 'unavailable' } else { $script:AuthState }
-        $providers.cursor = [ordered]@{
-            selected = $true
-            status = $cursorStatus
-            message = $script:CursorErrMsg
-            lastFetch = $script:CursorLastFetch
-            usage = $script:LiveData
-            summary = $script:SummaryData
-            local = $script:LocalData
-            error = $cursorError
-        }
+        $providers.cursor = New-CursorProviderSnapshot `
+            -Status $cursorStatus `
+            -Message $script:CursorErrMsg `
+            -LastFetch $script:CursorLastFetch `
+            -Usage $script:LiveData `
+            -Summary $script:SummaryData `
+            -Local $script:LocalData `
+            -FetchError $cursorError
     }
     if ($selectedProviders['grok']) {
         $grokStatus =
             if ($script:GrokAuthState -eq 'notoken') { 'unavailable' }
             elseif (Test-ProviderAuthFailed $script:GrokAuthState) { $script:GrokAuthState }
+            elseif ($script:GrokAuthState -eq 'stale') { 'stale' }
             elseif ($script:GrokUsage) { 'ok' }
             elseif ($grokError) { 'error' }
             else { $script:GrokAuthState }
 
-        $providers.grok = [ordered]@{
-            selected = $true
-            status = $grokStatus
-            message = $script:GrokErrMsg
-            usage = $script:GrokUsage
-            error = $grokError
-        }
+        $providers.grok = New-GrokProviderSnapshot `
+            -Status $grokStatus `
+            -Message $script:GrokErrMsg `
+            -Usage $script:GrokUsage `
+            -FetchError $grokError
     }
 
-    $snapshot = [ordered]@{
-        schema = 'ai-usage.snapshot.v1'
-        generatedAt = (Get-Date).ToString('o')
-        appVersion = $script:AppVersion
-        request = [ordered]@{
-            providers = @($selectedProviders.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { $_.Key })
-            timeoutSec = [ordered]@{
-                claude = $claudeTimeout
-                cursor = $cursorTimeout
-                grok   = $grokTimeout
-            }
-        }
-        providers = $providers
-    }
+    $snapshot = New-UnifiedSnapshotDocument `
+        -AppVersion $script:AppVersion `
+        -SelectedProviders $selectedProviders `
+        -Timeouts ([ordered]@{ claude = $claudeTimeout; cursor = $cursorTimeout; grok = $grokTimeout }) `
+        -Providers $providers
 
     $snapshot | ConvertTo-Json -Depth 12
 }
@@ -401,6 +377,9 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\ProviderLogin.ps1')
 . (Join-Path $script:AppDir 'src\ProviderVersions.ps1')
 . (Join-Path $script:AppDir 'src\Update.ps1')
+. (Join-Path $script:AppDir 'src\ProviderLinks.ps1')
+. (Join-Path $script:AppDir 'src\Export.ps1')
+. (Join-Path $script:AppDir 'src\InstallManifest.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
 . (Join-Path $script:AppDir 'src\ProviderPicker.ps1')
@@ -598,6 +577,10 @@ function Sync-ClaudePollTimerInterval {
 
     if (-not $script:pollTimer) { return }
     $seconds = Get-ClaudeAdaptivePollSeconds $State
+    # This timer refreshes every provider. Claude enforces its own retry
+    # deadline in Get-Usage; its backoff must not stall Codex/Cursor/Grok.
+    $baseline = if ($script:PollSeconds) { [int]$script:PollSeconds } else { 180 }
+    $seconds = [math]::Min($baseline, $seconds)
     $script:pollTimer.Interval = [TimeSpan]::FromSeconds($seconds)
 }
 

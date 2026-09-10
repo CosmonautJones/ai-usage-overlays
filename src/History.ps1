@@ -65,20 +65,28 @@ function Load-History {
     }
 }
 
-function Add-HistorySample([object]$data) {
+function Add-HistorySample([object]$data, $FreshProviders = $null) {
     # $data is the API response object from Get-Usage ($script:State.Data)
     $sampleData = [ordered]@{
         t = (Get-Date -Format 'o')  # ISO 8601
     }
     foreach ($field in Get-ClaudeHistoryQuotaFields) {
         $window = if ($data) { $data.PSObject.Properties[$field].Value } else { $null }
-        $sampleData[$field] = if ($window) { [double]$window.utilization } else { $null }
+        $sampleData[$field] = if ($window) { ConvertTo-HistoryMetric $window.utilization } else { $null }
     }
     $codex = $script:CodexStats
     $sampleData['codex_five_hour'] = if ($codex) { ConvertTo-HistoryMetric $codex.FiveHourPct } else { $null }
     $sampleData['codex_seven_day'] = if ($codex) { ConvertTo-HistoryMetric $codex.WeekPct } else { $null }
     $sampleData['grok_seven_day'] = if ($script:GrokUsage) { ConvertTo-HistoryMetric $script:GrokUsage.WeekPct } else { $null }
     $sampleData['cursor_requests'] = Get-HistoryCursorRequestPct
+    if ($null -ne $FreshProviders) {
+        if (-not $FreshProviders.claude) {
+            foreach ($field in Get-ClaudeHistoryQuotaFields) { $sampleData[$field] = $null }
+        }
+        if (-not $FreshProviders.codex) { $sampleData['codex_five_hour'] = $null; $sampleData['codex_seven_day'] = $null }
+        if (-not $FreshProviders.grok) { $sampleData['grok_seven_day'] = $null }
+        if (-not $FreshProviders.cursor) { $sampleData['cursor_requests'] = $null }
+    }
     $sample = [PSCustomObject]$sampleData
     $script:History.Add($sample)
     while ($script:History.Count -gt $script:HistoryMaxLen) {
@@ -89,7 +97,12 @@ function Add-HistorySample([object]$data) {
 function Complete-UnifiedHistoryPoll {
     $data = $null
     if ($script:State -and $script:State.Data) { $data = $script:State.Data }
-    Add-HistorySample $data
+    Add-HistorySample $data @{
+        claude = ($script:State.Status -eq 'ok')
+        codex = ($script:CodexAuthState -eq 'ok')
+        grok = ($script:GrokAuthState -eq 'ok')
+        cursor = ($script:AuthState -eq 'ok')
+    }
     Save-History
 }
 

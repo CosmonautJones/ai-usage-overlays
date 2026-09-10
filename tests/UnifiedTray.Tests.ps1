@@ -10,6 +10,14 @@ Describe 'Unified tray refresh menu' {
         ).Value
     }
 
+    It 'wires Platforms from the shipped link catalog rather than a single Claude URL' {
+        $script:UnifiedTraySource | Should -Match "New-StripItem 'Platforms'"
+        $script:UnifiedTraySource | Should -Match 'Get-ProviderLinkMenuShape'
+        $script:UnifiedTraySource | Should -Match 'Open-ProviderLink -Provider'
+        $script:UnifiedTraySource | Should -Not -Match "New-StripItem 'Open claude.ai/usage'"
+        $script:UnifiedTraySource | Should -Match 'Version \{0\}'
+    }
+
     It 'routes Refresh now through the async refresh pipeline' {
         $script:UnifiedTraySource | Should -Match "New-StripItem 'Refresh now' \{ Invoke-ManualRefresh \}"
         $script:UnifiedTraySource | Should -Match 'function Invoke-ManualRefresh'

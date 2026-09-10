@@ -89,19 +89,25 @@ Describe 'Get-CodexLiveUsage auth reporting' {
 Describe 'Snapshot alignment' {
     BeforeAll {
         $script:src = Get-Content (Join-Path $script:root 'unified-overlay.ps1') -Raw -Encoding UTF8
+        . (Join-Path $script:root 'src\Export.ps1')
         $start = $script:src.IndexOf('$providers = [ordered]@{')
-        $end = $script:src.IndexOf('$snapshot = [ordered]@{', $start)
+        $end = $script:src.IndexOf('$snapshot = New-UnifiedSnapshotDocument', $start)
         $script:block = $script:src.Substring($start, $end - $start)
     }
 
     It 'exposes a message field for every provider' {
-        # Scope each assertion to that provider's own [ordered]@{ ... } literal so
-        # a missing field cannot be masked by the next provider's block.
-        foreach ($p in 'claude', 'codex', 'cursor', 'grok') {
-            $m = [regex]::Match($script:block, "providers\.$p\s*=\s*\[ordered\]@\{(.+?)\r?\n\s{8}\}", 'Singleline')
-            $m.Success | Should -BeTrue -Because "the $p snapshot block must be parseable"
-            $m.Groups[1].Value | Should -Match 'message\s*=' -Because "$p must report WHY it is unhealthy, not just that it is"
+        $claude = New-ClaudeProviderSnapshot -Status 'auth' -Message 'Not logged in'
+        $codex  = New-CodexProviderSnapshot  -Status 'auth' -Message 'run codex login'
+        $cursor = New-CursorProviderSnapshot -Status 'auth' -Message 'Log in from tray'
+        $grok   = New-GrokProviderSnapshot   -Status 'auth' -Message 'run grok login'
+        foreach ($snap in @($claude, $codex, $cursor, $grok)) {
+            $snap.Contains('message') | Should -BeTrue
+            $snap['message'] | Should -Not -BeNullOrEmpty
         }
+        $script:src | Should -Match 'New-ClaudeProviderSnapshot'
+        $script:src | Should -Match 'New-CodexProviderSnapshot'
+        $script:src | Should -Match 'New-CursorProviderSnapshot'
+        $script:src | Should -Match 'New-GrokProviderSnapshot'
     }
 
     It 'derives codex status from its auth state, not merely from parsed local stats' {

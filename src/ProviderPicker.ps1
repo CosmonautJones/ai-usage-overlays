@@ -75,7 +75,7 @@ function Show-ProviderPickerDialog {
     $title.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
 
     $hint = New-Object System.Windows.Forms.Label
-    $hint.Text = 'Hidden tiles stay quiet. Change anytime from the tray → Providers.'
+    $hint.Text = 'Hidden tiles stay quiet. Change anytime from the tray > Providers.'
     $hint.AutoSize = $false
     $hint.Size = New-Object System.Drawing.Size(300, 36)
     $hint.Location = New-Object System.Drawing.Point(20, 44)

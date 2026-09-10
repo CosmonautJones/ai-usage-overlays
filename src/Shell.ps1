@@ -739,6 +739,12 @@ $xaml = @'
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Top" Margin="0,2,0,0"/>
               <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas" TextWrapping="Wrap" LineHeight="16"/>
             </Grid>
+            <Grid Margin="0,0,0,2">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="RESETS" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="grokResetsText" Text="--" Foreground="#4ADE80" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
             <Grid>
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="PREPAID" Foreground="#7BA8C8"
@@ -1534,7 +1540,28 @@ function Update-CodexSection {
 # Update-CursorSection - ports cursor-overlay.ps1 Update-UI body (minus chrome
 # dot/time), renamed dup elements + namespaced error/fetch vars.
 # ---------------------------------------------------------------------------
+function Update-GrokResetDisplay {
+    $label = $script:window.FindName('grokResetsText')
+    if (-not $label) { return }
+    $usage = $script:GrokUsage
+    $label.Text = '--'
+    $label.ToolTip = 'One-time usage reset availability could not be verified.'
+    if ($script:GrokAuthState -ne 'ok' -or -not $usage -or $usage.ResetStatus -ne 'ok' -or $null -eq $usage.ResetsAvailable) { return }
+    $label.Text = ('{0} available' -f $usage.ResetsAvailable)
+    $label.ToolTip = 'One-time usage resets. Redeem on the Grok Usage page.'
+    if ($usage.ResetExpiresAt) {
+        $end = [datetimeoffset]$usage.ResetExpiresAt
+        if ($end -le [datetimeoffset]::Now) {
+            $label.Text = '--'
+            $label.ToolTip = 'Reset availability needs refreshing after expiry.'
+        } else {
+            $label.ToolTip += (' Earliest expires {0:MMM d, yyyy h:mm tt}.' -f $end.LocalDateTime)
+        }
+    }
+}
+
 function Update-GrokSection {
+    Update-GrokResetDisplay
     Set-SectionAuthError 'grokErrText' $script:GrokAuthState $script:GrokErrMsg -CliName 'grok' | Out-Null
 
     $s = $script:GrokUsage
