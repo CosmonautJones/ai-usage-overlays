@@ -195,6 +195,7 @@ $xaml = @'
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse x:Name="claudeStatusDot" Width="5" Height="5" Fill="#4B6A8A" VerticalAlignment="Center" Margin="0,0,7,0"/>
                 <TextBlock Text="CLAUDE" Foreground="#E2E8F0"
                            FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock x:Name="claudeVersionText" Text="--" Foreground="#5C7A96"
@@ -449,6 +450,7 @@ $xaml = @'
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse x:Name="codexStatusDot" Width="5" Height="5" Fill="#4B6A8A" VerticalAlignment="Center" Margin="0,0,7,0"/>
                 <TextBlock Text="CODEX" Foreground="#E2E8F0"
                            FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock x:Name="codexVersionText" Text="--" Foreground="#5C7A96"
@@ -617,6 +619,7 @@ $xaml = @'
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse x:Name="cursorStatusDot" Width="5" Height="5" Fill="#4B6A8A" VerticalAlignment="Center" Margin="0,0,7,0"/>
                 <TextBlock Text="CURSOR" Foreground="#E2E8F0"
                            FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock x:Name="cursorVersionText" Text="--" Foreground="#5C7A96"
@@ -752,6 +755,7 @@ $xaml = @'
                          Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas"
                          VerticalAlignment="Center" Margin="0,0,8,0"/>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Ellipse x:Name="grokStatusDot" Width="5" Height="5" Fill="#4B6A8A" VerticalAlignment="Center" Margin="0,0,7,0"/>
                 <TextBlock Text="GROK" Foreground="#E2E8F0"
                            FontSize="12" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock x:Name="grokVersionText" Text="--" Foreground="#5C7A96"
@@ -1924,30 +1928,24 @@ function Update-AllSections {
     $dot  = $script:window.FindName('statusDot')
     $time = $script:window.FindName('timeText')
     $status = if ($script:State) { $script:State.Status } else { 'init' }
-    $claudeShown = Test-ClaudeSectionVisible
-    # When Claude is hidden, do not surface Claude auth/stale/error in top chrome.
-    $chromeStatus = $status
-    if (-not $claudeShown -and $status -in @('auth', 'error', 'stale')) {
-        $chromeStatus = 'ok'
+    $statuses = @{
+        claude = $status
+        codex  = $script:CodexAuthState
+        cursor = $script:AuthState
+        grok   = $script:GrokAuthState
     }
-    if ($dot) {
-        switch ($chromeStatus) {
-            'ok'    { $dot.Fill = NewBrush '#4ADE80' }
-            'stale' { $dot.Fill = NewBrush '#FBBF24' }
-            'auth'  { $dot.Fill = NewBrush '#F87171' }
-            'error' { $dot.Fill = NewBrush '#F87171' }
-            default { $dot.Fill = NewBrush '#4B6A8A' }
-        }
-    }
+    # Worst status among the sections the user enabled. A hidden provider -
+    # Claude included - never surfaces its auth/stale/error in the top chrome.
+    $enabled = if ($script:Cfg) { $script:Cfg.Sections } else { $null }
+    $worst = Get-WorstProviderStatus -Status $statuses -Enabled $enabled
+    $chromeStatus = $worst.Status
+    if ($dot) { $dot.Fill = NewBrush (Get-StatusDotColor $chromeStatus) }
     if ($time -and $script:State) {
-        if ($script:State.Status -eq 'ok') {
-            $time.Text = $script:State.LastFetch
-        } elseif ($claudeShown) {
-            $time.Text = $script:State.Message
-        } else {
-            $time.Text = ''
-        }
+        $busy = if ($status -eq 'refreshing') { [string]$script:State.Message } else { '' }
+        $time.Text = Get-ChromeStatusText -Status $chromeStatus -Provider $worst.Provider `
+            -LastFetch $script:State.LastFetch -Busy $busy
     }
+    Set-SectionStatusDots $statuses
 
     Update-ClaudeSection
     Update-CodexSection
@@ -1972,4 +1970,26 @@ function Update-AllSections {
     }
 
     if (Get-Command Update-QuakeView -ErrorAction SilentlyContinue) { Update-QuakeView }
+}
+
+# One quiet dot per section header, so a single provider failing no longer
+# hides the others' health behind the chrome dot. The tooltip carries the
+# detail; the dot itself costs no row height.
+function Set-SectionStatusDots($Statuses) {
+    $claudeMsg = ''
+    $claudeFetch = ''
+    if ($script:State) { $claudeMsg = $script:State.Message; $claudeFetch = $script:State.LastFetch }
+    $detail = @{
+        claude = @{ Message = $claudeMsg;          LastFetch = $claudeFetch }
+        codex  = @{ Message = $script:CodexErrMsg;  LastFetch = '' }
+        cursor = @{ Message = $script:CursorErrMsg; LastFetch = $script:CursorLastFetch }
+        grok   = @{ Message = $script:GrokErrMsg;   LastFetch = '' }
+    }
+    foreach ($key in $script:StatusProviderOrder) {
+        $el = $script:window.FindName($key + 'StatusDot')
+        if (-not $el) { continue }
+        $st = Get-StatusMapValue $Statuses $key
+        $el.Fill = NewBrush (Get-StatusDotColor $st)
+        $el.ToolTip = Get-SectionStatusTip -Status $st -Message $detail[$key].Message -LastFetch $detail[$key].LastFetch
+    }
 }
