@@ -55,6 +55,10 @@ function Wire-UnifiedWindowEvents {
             $header.Add_MouseLeftButtonUp([scriptblock]::Create("Toggle-Section '$sectionKey'; Sync-SectionMenuItems"))
         }
     }
+
+    # Global hotkeys go here rather than at file scope: this file is loaded before
+    # the saved config is, while this runs after it. Re-registering is idempotent.
+    if (Get-Command Register-OverlayHotkeys -ErrorAction SilentlyContinue) { Register-OverlayHotkeys }
 }
 
 function Toggle-PinnedWindow {
@@ -373,6 +377,12 @@ function Test-AppUpdateCheckJobRunning {
 }
 
 function Sync-UpdateMenuItems {
+    # The footer version is the in-overlay update signal; repaint it on every
+    # update-state change, ahead of the menu guard so it never gets skipped.
+    if (Get-Command Update-FooterVersion -ErrorAction SilentlyContinue) {
+        Update-FooterVersion
+    }
+
     if (-not $script:updateItems -or -not $script:updateItems.ContainsKey('install')) { return }
 
     $state = $script:UpdateState
@@ -921,6 +931,51 @@ $miHideFocus.Checked = [bool]$script:Cfg['DropdownHideOnFocusLoss']
 [void]$miView.DropDownItems.Add($miHideFocus)
 [void]$script:ctxStrip.Items.Add($miView)
 Sync-ViewModeMenuItems
+
+# Global hotkeys for the everyday actions. Both ship unbound, so each submenu
+# leads with an explicit way back to that state.
+$script:hotkeyMenuItems = @{}
+function Sync-OverlayHotkeyMenuItems {
+    if (-not (Get-Command Get-HotkeyAction -ErrorAction SilentlyContinue)) { return }
+    foreach ($action in @($script:hotkeyMenuItems.Keys)) {
+        $entry = Get-HotkeyAction $action
+        if (-not $entry) { continue }
+        $cur = [string]$script:Cfg[$entry.ConfigKey]
+        $items = $script:hotkeyMenuItems[$action]
+        foreach ($k in @($items.Keys)) { $items[$k].Checked = ($k -eq $cur) }
+    }
+}
+
+# Presets are Ctrl+Alt(+Shift)+F-key only: apps rarely bind them, and an F-key
+# never types a character, so AltGr (sent as Ctrl+Alt) cannot collide. Skipped:
+# Ctrl+Alt+F7/F8 (JetBrains), Ctrl+Alt+F12 (Intel graphics panel), and
+# Ctrl+Alt+Shift+F9/F10, which tests/HotkeyProbe.ps1 claims while it runs.
+$miHotkeys = New-StripItem 'Hotkeys' $null
+foreach ($spec in @(
+    @{ Action = 'Toggle';  Label = 'Show/hide overlay'; Combos = @('Ctrl+Alt+F6', 'Ctrl+Alt+F11', 'Ctrl+Alt+Shift+F6', 'Ctrl+Alt+Shift+F11') },
+    @{ Action = 'Refresh'; Label = 'Refresh now';       Combos = @('Ctrl+Alt+F5', 'Ctrl+Alt+F10', 'Ctrl+Alt+Shift+F5', 'Ctrl+Alt+Shift+F12') })) {
+    $action = $spec.Action
+    $items = @{}
+    $miAction = New-StripItem $spec.Label $null
+    $none = New-StripItem 'None (unbound)' ([scriptblock]::Create("Set-OverlayHotkey '$action' ''; Save-UnifiedState; Sync-OverlayHotkeyMenuItems"))
+    $none.CheckOnClick = $false
+    $items[''] = $none
+    [void]$miAction.DropDownItems.Add($none)
+    [void]$miAction.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    foreach ($combo in $spec.Combos) {
+        $c = $combo
+        $sub = New-StripItem $c ([scriptblock]::Create("Set-OverlayHotkey '$action' '$c'; Save-UnifiedState; Sync-OverlayHotkeyMenuItems"))
+        $sub.CheckOnClick = $false
+        $items[$c] = $sub
+        [void]$miAction.DropDownItems.Add($sub)
+    }
+    $script:hotkeyMenuItems[$action] = $items
+    [void]$miHotkeys.DropDownItems.Add($miAction)
+}
+[void]$script:ctxStrip.Items.Add($miHotkeys)
+Sync-OverlayHotkeyMenuItems
+# The saved config loads after this file, so re-sync the checks on every open.
+$script:ctxStrip.add_Opening({ Sync-OverlayHotkeyMenuItems })
 Add-Separator
 
 # Snap to corner

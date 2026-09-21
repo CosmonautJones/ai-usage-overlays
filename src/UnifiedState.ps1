@@ -21,6 +21,10 @@ $script:UnifiedCfgDefaults = @{
     AlertState = @{}
     ViewMode = 'Pinned'              # 'Pinned' | 'Quake'
     DropdownHotkey = 'Shift+F11'
+    # Global hotkeys steal the combo from every other app, so these start unbound
+    # ('' registers nothing) until the user picks one from the tray.
+    ToggleOverlayHotkey = ''
+    RefreshHotkey = ''
     DropdownMonitor = 'Primary'      # 'Primary' | 'Active' | a Screen DeviceName
     DropdownOpacity = 0.85
     DropdownHideOnFocusLoss = $false
@@ -121,7 +125,7 @@ function Load-UnifiedState {
         if (-not (Test-Path $script:StatePath)) { return }
 
         $s = Get-Content $script:StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion', 'ViewMode', 'DropdownHotkey', 'DropdownMonitor', 'DropdownOpacity', 'DropdownHideOnFocusLoss')) {
+        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion', 'ViewMode', 'DropdownHotkey', 'ToggleOverlayHotkey', 'RefreshHotkey', 'DropdownMonitor', 'DropdownOpacity', 'DropdownHideOnFocusLoss')) {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
@@ -404,6 +408,8 @@ function Get-OverlayPersistedSettingKeys {
         'Sections'
         'AutoCheckUpdates'
         'DropdownHotkey'
+        'ToggleOverlayHotkey'
+        'RefreshHotkey'
         'DropdownMonitor'
         'DropdownHideOnFocusLoss'
         'Left'

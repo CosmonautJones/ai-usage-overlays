@@ -33,8 +33,16 @@ function Get-DropdownReferencedAssemblies {
 if (-not ('AIUsageGlobalHotkey' -as [type])) {
     Add-Type -ReferencedAssemblies (Get-DropdownReferencedAssemblies) -TypeDefinition @'
 using System;
+using System.Collections;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+
+public class AIUsageHotkeyEventArgs : EventArgs
+{
+    private readonly int _id;
+    public AIUsageHotkeyEventArgs(int id) { _id = id; }
+    public int Id { get { return _id; } }
+}
 
 public class AIUsageGlobalHotkey : NativeWindow, IDisposable
 {
@@ -44,45 +52,60 @@ public class AIUsageGlobalHotkey : NativeWindow, IDisposable
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     private const int WM_HOTKEY = 0x0312;
-    private const int HOTKEY_ID = 0x4149;   // 'AI'
-    private bool _registered;
+    // Ids currently held by this window. Several bindings share one window, and
+    // WM_HOTKEY's wParam says which of them fired. ArrayList, not List<int>:
+    // pwsh's Add-Type does not reference System.Collections, where List<T> lives.
+    private readonly ArrayList _registered = new ArrayList();
 
-    public event EventHandler Pressed;
+    public event EventHandler<AIUsageHotkeyEventArgs> Pressed;
 
     public AIUsageGlobalHotkey() { CreateHandle(new CreateParams()); }
 
-    public bool Register(uint modifiers, uint vk)
+    public bool Register(int id, uint modifiers, uint vk)
     {
-        Unregister();
-        _registered = RegisterHotKey(this.Handle, HOTKEY_ID, modifiers, vk);
-        return _registered;
+        Unregister(id);
+        bool ok = RegisterHotKey(this.Handle, id, modifiers, vk);
+        if (ok) { _registered.Add(id); }
+        return ok;
     }
 
-    public void Unregister()
+    public void Unregister(int id)
     {
-        if (_registered) { UnregisterHotKey(this.Handle, HOTKEY_ID); _registered = false; }
+        if (!_registered.Contains(id)) { return; }
+        UnregisterHotKey(this.Handle, id);
+        _registered.Remove(id);
+    }
+
+    public void UnregisterAll()
+    {
+        foreach (object id in _registered.ToArray()) { UnregisterHotKey(this.Handle, (int)id); }
+        _registered.Clear();
     }
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WM_HOTKEY && (int)m.WParam == HOTKEY_ID)
+        if (m.Msg == WM_HOTKEY)
         {
-            EventHandler h = Pressed;
-            if (h != null) h(this, EventArgs.Empty);
+            int id = (int)m.WParam;
+            if (_registered.Contains(id))
+            {
+                EventHandler<AIUsageHotkeyEventArgs> h = Pressed;
+                if (h != null) h(this, new AIUsageHotkeyEventArgs(id));
+            }
         }
         base.WndProc(ref m);
     }
 
     public void Dispose()
     {
-        Unregister();
+        UnregisterAll();
         if (this.Handle != IntPtr.Zero) { this.DestroyHandle(); }
     }
 }
 '@ -ErrorAction Stop
 }
 
-$script:DropdownHotkey  = $null    # AIUsageGlobalHotkey instance
+$script:HotkeyOwner     = $null    # AIUsageGlobalHotkey instance, shared by every binding
 $script:DropdownShown   = $false
 $script:DropdownAnimating = $false
 $script:DropdownAnimTarget = 0.0   # slide target/mode for the Completed handler,
@@ -122,39 +145,134 @@ function ConvertTo-HotkeySpec([string]$Text) {
     return @{ Mods = ($mods -bor $script:HotkeyNoRepeat); Vk = $vk }
 }
 
-function Register-DropdownHotkey {
+# Bindable actions. Each owns a WM_HOTKEY id (arbitrary, but stable and unique
+# within the owner window), the config key holding its combo, and what it runs.
+# 0x4149 ('AI') is the id the drop-down has always used. Label and Fallback make
+# up the log lines when a combo cannot be registered.
+$script:HotkeyActions = [ordered]@{
+    Dropdown = @{
+        Id               = 0x4149
+        ConfigKey        = 'DropdownHotkey'
+        Label            = 'Dropdown'
+        Fallback         = 'dropdown will only open from the tray'
+        DropdownModeOnly = $true
+        Action           = { Toggle-Dropdown }
+    }
+    Toggle = @{
+        Id               = 0x414A
+        ConfigKey        = 'ToggleOverlayHotkey'
+        Label            = 'Show/hide overlay'
+        Fallback         = 'the overlay will only show/hide from the tray'
+        DropdownModeOnly = $false
+        Action           = { Toggle-Window }
+    }
+    Refresh = @{
+        Id               = 0x414B
+        ConfigKey        = 'RefreshHotkey'
+        Label            = 'Refresh now'
+        Fallback         = 'refresh will only run from the tray'
+        DropdownModeOnly = $false
+        Action           = { Invoke-ManualRefresh }
+    }
+}
+
+function Get-HotkeyActionNames {
+    return @($script:HotkeyActions.Keys)
+}
+
+function Get-HotkeyAction([string]$Name) {
+    if ([string]::IsNullOrEmpty($Name) -or -not $script:HotkeyActions.Contains($Name)) { return $null }
+    return $script:HotkeyActions[$Name]
+}
+
+# Runs from a WndProc on the UI thread; an escaping exception takes the whole
+# dispatcher down, so a failing action is logged instead.
+function Invoke-OverlayHotkey([int]$Id) {
+    foreach ($name in @($script:HotkeyActions.Keys)) {
+        $entry = $script:HotkeyActions[$name]
+        if ([int]$entry.Id -ne $Id) { continue }
+        try {
+            & $entry.Action
+        } catch {
+            Write-Log ("{0} hotkey failed: {1}`n{2}" -f $entry.Label, $_.Exception.Message, $_.ScriptStackTrace)
+        }
+        return
+    }
+}
+
+function Get-OverlayHotkeyOwner {
+    if (-not $script:HotkeyOwner) {
+        $script:HotkeyOwner = New-Object AIUsageGlobalHotkey
+        $script:HotkeyOwner.add_Pressed({ param($s, $e) Invoke-OverlayHotkey ([int]$e.Id) })
+    }
+    return $script:HotkeyOwner
+}
+
+function Register-OverlayHotkey([string]$Name) {
+    $entry = Get-HotkeyAction $Name
+    if (-not $entry) { return $false }
+    $combo = [string]$script:Cfg[$entry.ConfigKey]
     try {
-        $spec = ConvertTo-HotkeySpec ([string]$script:Cfg['DropdownHotkey'])
+        $owner = Get-OverlayHotkeyOwner
+        # Drop the previous claim first so re-binding, or clearing back to
+        # unbound, hands the old combo back to Windows.
+        $owner.Unregister([int]$entry.Id)
+        if ([string]::IsNullOrWhiteSpace($combo)) { return $false }
+        $spec = ConvertTo-HotkeySpec $combo
         if (-not $spec) {
-            Write-Log "Dropdown hotkey '$($script:Cfg['DropdownHotkey'])' is not a combo I recognise; dropdown will only open from the tray."
+            Write-Log "$($entry.Label) hotkey '$combo' is not a combo I recognise; $($entry.Fallback)."
             return $false
         }
-        if (-not $script:DropdownHotkey) {
-            $script:DropdownHotkey = New-Object AIUsageGlobalHotkey
-            $script:DropdownHotkey.add_Pressed({ Toggle-Dropdown })
-        }
-        $ok = $script:DropdownHotkey.Register([uint32]$spec.Mods, [uint32]$spec.Vk)
+        $ok = $owner.Register([int]$entry.Id, [uint32]$spec.Mods, [uint32]$spec.Vk)
         if (-not $ok) {
             # Another process already owns this combo - Windows gives no detail beyond the failure.
-            Write-Log "Dropdown hotkey '$($script:Cfg['DropdownHotkey'])' is already taken by another app; pick a different one."
+            Write-Log "$($entry.Label) hotkey '$combo' is already taken by another app; pick a different one."
         }
         return $ok
     } catch {
-        Write-Log "Register-DropdownHotkey failed: $($_.Exception.Message)"
+        Write-Log "Register-OverlayHotkey '$Name' failed: $($_.Exception.Message)"
         return $false
     }
 }
 
-function Unregister-DropdownHotkey {
-    if ($script:DropdownHotkey) {
-        try { $script:DropdownHotkey.Unregister() } catch { }
+# Every binding that applies to the current view. The drop-down combo only
+# means something in quake mode; the others work in either view.
+function Register-OverlayHotkeys {
+    foreach ($name in @($script:HotkeyActions.Keys)) {
+        if ($script:HotkeyActions[$name].DropdownModeOnly -and -not (Test-DropdownMode)) { continue }
+        [void](Register-OverlayHotkey $name)
     }
 }
 
+function Unregister-OverlayHotkey([string]$Name) {
+    $entry = Get-HotkeyAction $Name
+    if (-not $entry -or -not $script:HotkeyOwner) { return }
+    try { $script:HotkeyOwner.Unregister([int]$entry.Id) } catch { }
+}
+
+function Set-OverlayHotkey([string]$Name, [string]$Combo) {
+    $entry = Get-HotkeyAction $Name
+    if (-not $entry) { return }
+    $script:Cfg[$entry.ConfigKey] = $Combo
+    if ($entry.DropdownModeOnly -and -not (Test-DropdownMode)) {
+        Unregister-OverlayHotkey $Name
+        return
+    }
+    [void](Register-OverlayHotkey $Name)
+}
+
+function Register-DropdownHotkey {
+    return Register-OverlayHotkey 'Dropdown'
+}
+
+function Unregister-DropdownHotkey {
+    Unregister-OverlayHotkey 'Dropdown'
+}
+
 function Dispose-DropdownHotkey {
-    if ($script:DropdownHotkey) {
-        try { $script:DropdownHotkey.Dispose() } catch { }
-        $script:DropdownHotkey = $null
+    if ($script:HotkeyOwner) {
+        try { $script:HotkeyOwner.Dispose() } catch { }
+        $script:HotkeyOwner = $null
     }
 }
 
@@ -398,6 +516,5 @@ function Set-DropdownMonitor([string]$DeviceName) {
 }
 
 function Set-DropdownHotkey([string]$Combo) {
-    $script:Cfg['DropdownHotkey'] = $Combo
-    if (Test-DropdownMode) { Register-DropdownHotkey | Out-Null }
+    Set-OverlayHotkey 'Dropdown' $Combo
 }
