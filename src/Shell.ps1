@@ -847,9 +847,9 @@ $xaml = @'
         <Border Height="1" Background="{StaticResource Divider}" Margin="0,4,0,5"/>
 
         <!-- TravOS footer -->
-        <Grid>
+        <Grid x:Name="footerRow">
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <Grid Width="18" Height="18" Margin="0,0,7,0" VerticalAlignment="Center">
             <Viewbox x:Name="brandMarkBox" Stretch="Uniform">
@@ -862,6 +862,12 @@ $xaml = @'
           </Grid>
           <TextBlock x:Name="brandLabel" Grid.Column="1" Text="TravOS"
                      Foreground="#5C8AAA" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+          <!-- The overlay's own version, read the same way as each provider's.
+               Sized to ride inside the 18px brand mark so the footer costs no
+               extra height. Update-FooterVersion tints it when a release waits. -->
+          <TextBlock x:Name="versionLabel" Grid.Column="2" Text="" Foreground="#5C8AAA"
+                     FontSize="9" FontFamily="Consolas" VerticalAlignment="Center"
+                     HorizontalAlignment="Right" Margin="8,0,0,0"/>
         </Grid>
 
       </StackPanel>
@@ -1141,6 +1147,42 @@ function Invoke-ResetFooterBrand {
     Apply-FooterBrandMark
 }
 
+# ---------------------------------------------------------------------------
+# Resolve-FooterVersionFg - colour for the footer version. Amber while a release
+# is waiting so the overlay itself carries the update signal; otherwise the
+# theme's footer brand colour, so it reads as chrome rather than an alert.
+# ---------------------------------------------------------------------------
+function Resolve-FooterVersionFg([string]$Status, [string]$BrandFg) {
+    if ($Status -eq 'available') { return '#FBBF24' }
+    if ([string]::IsNullOrWhiteSpace($BrandFg)) { return '#5C7A96' }
+    return $BrandFg
+}
+
+# ---------------------------------------------------------------------------
+# Update-FooterVersion - paints the footer version from the live update state.
+# Called from Apply-UnifiedTheme (startup + theme switch) and Sync-UpdateMenuItems
+# (every update-state change); both re-derive the colour, so neither clobbers it.
+# ---------------------------------------------------------------------------
+function Update-FooterVersion {
+    if (-not $script:window) { return }
+    $el = $script:window.FindName('versionLabel')
+    if (-not $el) { return }
+
+    $ver = [string]$script:AppVersion
+    if ($ver) { $el.Text = 'v' + $ver } else { $el.Text = '' }
+
+    $status = ''
+    if ($script:UpdateState) { $status = [string]$script:UpdateState.Status }
+
+    $brandFg = $null
+    if ($script:Cfg -and $script:Themes) {
+        $t = $script:Themes[[string]$script:Cfg.Theme]
+        if ($t) { $brandFg = [string]$t.BrandLabelFg }
+    }
+
+    $el.Foreground = NewBrush (Resolve-FooterVersionFg $status $brandFg)
+}
+
 function Apply-UnifiedTheme([string]$name) {
     $t = $script:Themes[$name]
     if (-not $t) { return }
@@ -1157,6 +1199,7 @@ function Apply-UnifiedTheme([string]$name) {
     $bp = $script:window.FindName('brandPath')
     if ($bp -and $t.BrandLabelFg) { $bp.Fill = NewBrush $t.BrandLabelFg }
     Apply-FooterBrandMark
+    Update-FooterVersion
 
     # Claude/Codex bars/labels/subs
     $bars   = @('fivehBar','weekBar','fabBar','opusBar','codexWeekBar','fivehBarC','weekBarC','fabBarC','opusBarC','codexWeekBarC')
