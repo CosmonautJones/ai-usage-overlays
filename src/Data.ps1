@@ -510,6 +510,20 @@ function Get-ClaudeCredentialFingerprints {
     return $fingerprints.ToArray()
 }
 
+# One key for every credential Get-Usage will try. The fetch loop falls through
+# all of them, so a rotation in ANY one is worth a retry - keying to the first
+# alone held a backoff for up to 30 minutes after a Windows re-auth whenever a
+# stale WSL token happened to be preferred. Sorted and de-duplicated so a
+# preference-order flip, or the same token at two paths, is not a rotation.
+# Built from token hashes, so a sync that rewrites an unchanged token matches.
+function Get-ClaudeCredentialSetHash {
+    param([string[]]$TokenHashes)
+
+    $members = @($TokenHashes | Where-Object { $_ } | Sort-Object -Unique)
+    if ($members.Count -eq 0) { return '' }
+    return Get-ClaudeTokenHash ($members -join '|')
+}
+
 # A token past its expiresAt cannot succeed, and spending a 401 on it only
 # escalates the backoff. Only an all-expired set counts: one unknown expiry or
 # one live token means the fetch loop still has something worth trying.
@@ -562,15 +576,14 @@ function Get-Usage {
     $candidatePaths = @($credentialPaths | Select-Object -Unique)
     $candidatePaths = @(Get-ClaudeCredentialPathsInPreferenceOrder $candidatePaths)
 
-    # The backoff and expiry decisions both turn on which token is on disk right
-    # now; the first in preference order is the one the fetch loop tries first.
+    # The backoff and expiry decisions both turn on which tokens are on disk
+    # right now - all of them, since the fetch loop tries every candidate.
     $fingerprints = @(Get-ClaudeCredentialFingerprints $candidatePaths)
-    $activeTokenHash = ''
-    if ($fingerprints.Count -gt 0) { $activeTokenHash = [string]$fingerprints[0].TokenHash }
+    $credentialSetHash = Get-ClaudeCredentialSetHash @($fingerprints | ForEach-Object { [string]$_.TokenHash })
 
     if (-not $Force) {
         $backoff = Get-ClaudeBackoffState
-        if (Test-ClaudeBackoffActive -Backoff $backoff -CurrentTokenHash $activeTokenHash) {
+        if (Test-ClaudeBackoffActive -Backoff $backoff -CurrentTokenHash $credentialSetHash) {
             # Replay the failure's own status/message so the cooldown reflects
             # its real cause (auth, network, ...) rather than always reading as
             # a rate limit.
@@ -585,13 +598,13 @@ function Get-Usage {
     }
 
     # Every token on disk is already past its expiresAt, so a request can only
-    # 401. Say what fixes it instead, and key the cooldown to this token so the
-    # poll after Claude Code rotates it goes straight through.
+    # 401. Say what fixes it instead, and key the cooldown to these tokens so
+    # the poll after Claude Code rotates any of them goes straight through.
     $nowMs = [System.DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $expiries = @($fingerprints | ForEach-Object { [long]$_.ExpiresAt })
     if (Test-ClaudeCredentialsExpired -ExpiresAtUnixMs $expiries -NowUnixMs $nowMs) {
         $expiredMessage = 'Token expired - open Claude Code to refresh'
-        [void](Register-ClaudeFailure -Status 'auth' -Message $expiredMessage -MinSeconds 60 -TokenHash $activeTokenHash)
+        [void](Register-ClaudeFailure -Status 'auth' -Message $expiredMessage -MinSeconds 60 -TokenHash $credentialSetHash)
         $script:State.Status = 'auth'; $script:State.Message = $expiredMessage
         return
     }
@@ -642,12 +655,12 @@ function Get-Usage {
             $script:State.Message = "Rate limited until $($until.ToString('HH:mm'))"
         }
         elseif ($code -eq 401) {
-            [void](Register-ClaudeFailure -Status 'auth' -Message 'Auth expired' -MinSeconds 60 -TokenHash $activeTokenHash)
+            [void](Register-ClaudeFailure -Status 'auth' -Message 'Auth expired' -MinSeconds 60 -TokenHash $credentialSetHash)
             $script:State.Status = 'auth'; $script:State.Message = 'Auth expired'
         }
         else {
             $msg = $_.Exception.Message
-            [void](Register-ClaudeFailure -Status 'stale' -Message $msg -MinSeconds 60 -TokenHash $activeTokenHash)
+            [void](Register-ClaudeFailure -Status 'stale' -Message $msg -MinSeconds 60 -TokenHash $credentialSetHash)
             $script:State.Status = 'stale'; $script:State.Message = $msg
         }
         # A failed usage call means the token/endpoint is already unhappy; do

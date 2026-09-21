@@ -145,6 +145,32 @@ Describe 'Get-ClaudeCredentialFingerprints' {
     }
 }
 
+Describe 'Get-ClaudeCredentialSetHash' {
+    BeforeAll {
+        $script:hashA = Get-ClaudeTokenHash 'token-a'
+        $script:hashB = Get-ClaudeTokenHash 'token-b'
+    }
+
+    It 'is the same whatever order the credentials are tried in' {
+        Get-ClaudeCredentialSetHash @($script:hashA, $script:hashB) |
+            Should -Be (Get-ClaudeCredentialSetHash @($script:hashB, $script:hashA))
+    }
+
+    It 'changes when any one credential changes' {
+        Get-ClaudeCredentialSetHash @($script:hashA, $script:hashB) |
+            Should -Not -Be (Get-ClaudeCredentialSetHash @($script:hashA, (Get-ClaudeTokenHash 'token-b2')))
+    }
+
+    It 'treats the same token at two paths as one member' {
+        Get-ClaudeCredentialSetHash @($script:hashA, $script:hashA) |
+            Should -Be (Get-ClaudeCredentialSetHash @($script:hashA))
+    }
+
+    It 'is empty when no credential could be read' {
+        Get-ClaudeCredentialSetHash @() | Should -Be ''
+    }
+}
+
 Describe 'Get-Usage token-aware backoff' {
     BeforeEach {
         $script:AppDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
@@ -166,7 +192,7 @@ Describe 'Get-Usage token-aware backoff' {
     }
 
     It 'retries immediately once Claude Code has rotated the token' {
-        Set-ClaudeBackoffUntil -BackoffUntil (Get-Date).AddMinutes(28) -FailureCount 16 -Status 'auth' -Message 'Auth expired' -TokenHash (Get-ClaudeTokenHash 'token-123')
+        Set-ClaudeBackoffUntil -BackoffUntil (Get-Date).AddMinutes(28) -FailureCount 16 -Status 'auth' -Message 'Auth expired' -TokenHash (Get-ClaudeCredentialSetHash @(Get-ClaudeTokenHash 'token-123'))
         Set-Content -Path $script:CredPath -Encoding UTF8 -Value '{"claudeAiOauth":{"accessToken":"token-rotated"}}'
         Mock Invoke-RestMethod $script:usageOk -ParameterFilter { $Uri -like '*oauth/usage' }
         Mock Invoke-RestMethod { [pscustomobject]@{ account = [pscustomobject]@{ email = 'x@y.z' } } } -ParameterFilter { $Uri -like '*oauth/profile' }
@@ -179,7 +205,7 @@ Describe 'Get-Usage token-aware backoff' {
     }
 
     It 'still waits out the backoff while the same token is on disk' {
-        Set-ClaudeBackoffUntil -BackoffUntil (Get-Date).AddMinutes(28) -FailureCount 16 -Status 'auth' -Message 'Auth expired' -TokenHash (Get-ClaudeTokenHash 'token-123')
+        Set-ClaudeBackoffUntil -BackoffUntil (Get-Date).AddMinutes(28) -FailureCount 16 -Status 'auth' -Message 'Auth expired' -TokenHash (Get-ClaudeCredentialSetHash @(Get-ClaudeTokenHash 'token-123'))
         Mock Invoke-RestMethod { throw 'network must not be touched' }
 
         Get-Usage
@@ -198,7 +224,7 @@ Describe 'Get-Usage token-aware backoff' {
 
         Get-Usage
 
-        (Get-ClaudeBackoffState).TokenHash | Should -Be (Get-ClaudeTokenHash 'token-123')
+        (Get-ClaudeBackoffState).TokenHash | Should -Be (Get-ClaudeCredentialSetHash @(Get-ClaudeTokenHash 'token-123'))
     }
 
     It 'leaves a 429 cooldown unkeyed so a rotation cannot walk over it' {
@@ -223,6 +249,113 @@ Describe 'Get-Usage token-aware backoff' {
         Get-Usage
 
         (Get-Content (Get-ClaudeBackoffPath) -Raw -Encoding UTF8) | Should -Not -Match 'token-123'
+    }
+}
+
+Describe 'Get-Usage backoff across several credentials' {
+    BeforeAll {
+        function Set-TestCredential([string]$Path, [string]$Token, [long]$ExpiresAt = 0) {
+            if ($ExpiresAt -eq 0) { $ExpiresAt = [System.DateTimeOffset]::UtcNow.AddHours(8).ToUnixTimeMilliseconds() }
+            Set-Content -Path $Path -Encoding UTF8 -Value ('{{"claudeAiOauth":{{"accessToken":"{0}","expiresAt":{1}}}}}' -f $Token, $ExpiresAt)
+        }
+    }
+
+    BeforeEach {
+        $script:AppDir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:AppDir -Force | Out-Null
+        $script:State = @{ Data = $null; Status = 'init'; LastFetch = ''; Message = '' }
+        $script:ClaudeIdentity = $null
+
+        # A Windows credential plus a WSL one; both are always candidates.
+        $script:CredPath = Join-Path $script:AppDir '.credentials.json'
+        $script:wslRoot = Join-Path $script:AppDir 'wsl-home'
+        New-Item -ItemType Directory -Path (Join-Path $script:wslRoot '.claude') -Force | Out-Null
+        $script:wslCred = Join-Path $script:wslRoot '.claude\.credentials.json'
+        Mock Get-WslHomeRoots { @($script:wslRoot) }
+
+        # Tokens in goodTokens get usage back; every other token gets a 401.
+        $script:goodTokens = @()
+        Mock Invoke-RestMethod {
+            $token = $Headers.Authorization -replace '^Bearer ', ''
+            if ($script:goodTokens -contains $token) {
+                return [pscustomobject]@{
+                    five_hour = [pscustomobject]@{ utilization = 8; resets_at = '2026-07-06T18:00:00Z' }
+                    seven_day = [pscustomobject]@{ utilization = 20; resets_at = '2026-07-13T18:00:00Z' }
+                    limits = @()
+                }
+            }
+            $ex = [System.Exception]::new('401 Unauthorized')
+            $ex | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 401 })
+            throw $ex
+        } -ParameterFilter { $Uri -like '*oauth/usage' }
+        Mock Invoke-RestMethod { [pscustomobject]@{ account = [pscustomobject]@{ email = 'x@y.z' } } } -ParameterFilter { $Uri -like '*oauth/profile' }
+    }
+
+    It 'retries when a credential other than the preferred one rotates' {
+        # A WSL token once succeeded, so it is preferred; it has since gone
+        # stale, and the user re-authenticates Claude Code on Windows.
+        Set-TestCredential $script:wslCred 'wsl-stale'
+        Set-TestCredential $script:CredPath 'win-old'
+        Save-PreferredClaudeCredentialPath $script:wslCred
+
+        Get-Usage
+        $script:State.Status | Should -Be 'auth'
+        (Get-ClaudeBackoffState).Until | Should -BeGreaterThan (Get-Date)
+
+        Set-TestCredential $script:CredPath 'win-new'
+        $script:goodTokens = @('win-new')
+        Get-Usage
+
+        $script:State.Status | Should -Be 'ok'
+        Get-ClaudeBackoffState | Should -BeNullOrEmpty
+    }
+
+    It 'holds the backoff when only the preference order changes' {
+        Set-TestCredential $script:wslCred 'wsl-stale'
+        Set-TestCredential $script:CredPath 'win-old'
+        Save-PreferredClaudeCredentialPath $script:wslCred
+        Get-Usage
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
+
+        Save-PreferredClaudeCredentialPath $script:CredPath
+        Get-Usage
+
+        $script:State.Status | Should -Be 'auth'
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
+    }
+
+    It 'holds the backoff when a sync rewrites an unchanged token' {
+        # wsl-mirror recopies the WSL credential every 60s. A fresh write of the
+        # same token - new mtime, different bytes - is not a rotation.
+        $expiresAt = [System.DateTimeOffset]::UtcNow.AddHours(8).ToUnixTimeMilliseconds()
+        Set-TestCredential $script:wslCred 'wsl-stale' $expiresAt
+        Set-TestCredential $script:CredPath 'win-old'
+        Get-Usage
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
+
+        Set-Content -Path $script:wslCred -Encoding UTF8 -Value ('{{ "claudeAiOauth": {{ "expiresAt": {0}, "accessToken": "wsl-stale" }} }}' -f $expiresAt)
+        (Get-Item $script:wslCred).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(1)
+        Get-Usage
+
+        $script:State.Status | Should -Be 'auth'
+        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
+    }
+
+    It 'releases an expiry lockout when any one credential is refreshed' {
+        $expiredAt = [System.DateTimeOffset]::UtcNow.AddMinutes(-5).ToUnixTimeMilliseconds()
+        Set-TestCredential $script:wslCred 'wsl-expired' $expiredAt
+        Set-TestCredential $script:CredPath 'win-expired' $expiredAt
+        Save-PreferredClaudeCredentialPath $script:wslCred
+
+        Get-Usage
+        $script:State.Message | Should -Be 'Token expired - open Claude Code to refresh'
+        Should -Invoke Invoke-RestMethod -Times 0 -Exactly -ParameterFilter { $Uri -like '*oauth/usage' }
+
+        Set-TestCredential $script:CredPath 'win-fresh'
+        $script:goodTokens = @('win-fresh')
+        Get-Usage
+
+        $script:State.Status | Should -Be 'ok'
     }
 }
 
@@ -257,11 +390,11 @@ Describe 'Get-Usage local expiry pre-check' {
         Get-Usage
         $state = Get-ClaudeBackoffState
         $state.Until | Should -BeGreaterThan (Get-Date)
-        $state.TokenHash | Should -Be (Get-ClaudeTokenHash 'stale-token')
+        $state.TokenHash | Should -Be (Get-ClaudeCredentialSetHash @(Get-ClaudeTokenHash 'stale-token'))
 
         $freshAt = [System.DateTimeOffset]::UtcNow.AddHours(8).ToUnixTimeMilliseconds()
         Set-Content -Path $script:CredPath -Encoding UTF8 -Value ('{{"claudeAiOauth":{{"accessToken":"fresh-token","expiresAt":{0}}}}}' -f $freshAt)
-        Test-ClaudeBackoffActive -Backoff (Get-ClaudeBackoffState) -CurrentTokenHash (Get-ClaudeTokenHash 'fresh-token') |
+        Test-ClaudeBackoffActive -Backoff (Get-ClaudeBackoffState) -CurrentTokenHash (Get-ClaudeCredentialSetHash @(Get-ClaudeTokenHash 'fresh-token')) |
             Should -BeFalse
     }
 
