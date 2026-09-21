@@ -675,14 +675,34 @@ function Start-AllRefreshJobs {
 # Merge a freshly-returned Claude usage State onto the previous one, preserving
 # last-known-good Data when the new result carries none (backoff/auth/stale/error
 # paths return no Data) so the HUD shows stale values, not blank bars.
+# Carried-forward Data is flagged Stale with DataAsOf set to the fetch it came
+# from, so the HUD can say how old the numbers are rather than present them as
+# live next to a reset countdown that may already have passed.
 function Resolve-ClaudeUsageState {
     param($Previous, $Incoming)
 
     if (-not $Incoming) { return $Previous }
     if ($null -eq $Incoming.Data -and $Previous -and $null -ne $Previous.Data) {
-        $Incoming.Data = $Previous.Data
+        $asOf = [string]$Previous.DataAsOf
+        if (-not $asOf) { $asOf = [string]$Previous.LastFetch }
+        Set-ClaudeUsageStateValue $Incoming 'Data' $Previous.Data
+        Set-ClaudeUsageStateValue $Incoming 'Stale' $true
+        Set-ClaudeUsageStateValue $Incoming 'DataAsOf' $asOf
+    } else {
+        Set-ClaudeUsageStateValue $Incoming 'Stale' $false
+        Set-ClaudeUsageStateValue $Incoming 'DataAsOf' ([string]$Incoming.LastFetch)
     }
     return $Incoming
+}
+
+# The job's State is a hashtable, but a process job (Windows PowerShell 5.1) can
+# hand back a deserialized object instead; set keys without assuming a shape.
+function Set-ClaudeUsageStateValue {
+    param($State, [string]$Name, $Value)
+
+    if ($null -eq $State) { return }
+    if ($State -is [System.Collections.IDictionary]) { $State[$Name] = $Value; return }
+    $State | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
 }
 
 function Complete-RefreshJobs {

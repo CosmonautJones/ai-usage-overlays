@@ -175,11 +175,34 @@ function Get-ClaudeBackoffState {
             FailureCount = [int]($json.FailureCount)
             Status       = [string]$json.Status
             Message      = [string]$json.Message
+            TokenHash    = [string]$json.TokenHash
         }
     } catch {
         Write-Log "Claude backoff load failed - $($_.Exception.Message)"
         return $null
     }
+}
+
+# Claude Code rotates the access token on its own schedule. Once it has, a
+# cooldown recorded against the old token is waiting out a problem the user has
+# already fixed, so it no longer applies. A backoff with no recorded hash (older
+# state files, or a 429 that is deliberately left unkeyed) and a token that
+# could not be read both keep the backoff in force.
+function Test-ClaudeBackoffActive {
+    param(
+        $Backoff,
+        [string]$CurrentTokenHash,
+        [datetime]$Now = (Get-Date)
+    )
+
+    if (-not $Backoff) { return $false }
+    if (-not $Backoff.Until) { return $false }
+    if ([datetime]$Backoff.Until -le $Now) { return $false }
+
+    $failedHash = [string]$Backoff.TokenHash
+    if ($failedHash -and $CurrentTokenHash -and $failedHash -ne $CurrentTokenHash) { return $false }
+
+    return $true
 }
 
 function Get-ClaudeBackoffUntil {
@@ -193,7 +216,8 @@ function Set-ClaudeBackoffUntil {
         [datetime]$BackoffUntil,
         [int]$FailureCount = 0,
         [string]$Status = 'stale',
-        [string]$Message = ''
+        [string]$Message = '',
+        [string]$TokenHash = ''
     )
 
     try {
@@ -202,10 +226,28 @@ function Set-ClaudeBackoffUntil {
             FailureCount = $FailureCount
             Status       = $Status
             Message      = $Message
+            TokenHash    = $TokenHash
         } | ConvertTo-Json -Depth 3 | Set-Content -Path (Get-ClaudeBackoffPath) -Encoding UTF8
     } catch {
         Write-Log "Claude backoff save failed - $($_.Exception.Message)"
     }
+}
+
+# A network outage and an expired token are different problems. Sharing one
+# counter let 14 'No such host is known' failures hand the first 401 failure
+# #16 and an immediate 30-minute lockout, so the count restarts whenever the
+# failure kind changes.
+function Get-ClaudeFailureCount {
+    param(
+        $Previous,
+        [string]$Status
+    )
+
+    if (-not $Previous) { return 1 }
+    $count = [int]$Previous.FailureCount
+    if ($count -le 0) { return 1 }
+    if ([string]$Previous.Status -ne $Status) { return 1 }
+    return $count + 1
 }
 
 # Record a failed usage fetch and schedule the next allowed attempt. Every
@@ -220,14 +262,13 @@ function Register-ClaudeFailure {
         [string]$Status = 'stale',
         [string]$Message = '',
         $RetryAfter = $null,
-        [int]$MinSeconds = 60
+        [int]$MinSeconds = 60,
+        [string]$TokenHash = ''
     )
 
     $now = Get-Date
 
-    $state = Get-ClaudeBackoffState
-    $count = 1
-    if ($state -and $state.FailureCount -gt 0) { $count = $state.FailureCount + 1 }
+    $count = Get-ClaudeFailureCount -Previous (Get-ClaudeBackoffState) -Status $Status
 
     if ($RetryAfter -and ([datetime]$RetryAfter) -gt $now.AddMinutes(1)) {
         $until = [datetime]$RetryAfter
@@ -238,7 +279,7 @@ function Register-ClaudeFailure {
         $until = $now.AddSeconds($delay)
     }
 
-    Set-ClaudeBackoffUntil -BackoffUntil $until -FailureCount $count -Status $Status -Message $Message
+    Set-ClaudeBackoffUntil -BackoffUntil $until -FailureCount $count -Status $Status -Message $Message -TokenHash $TokenHash
     Write-Log "Claude backoff: $Status (failure #$count) until $($until.ToString('HH:mm:ss')) - $Message"
     return $until
 }
@@ -432,6 +473,60 @@ function Select-ClaudeCredential {
     return $bestFallback
 }
 
+# What the recovery checks need from each credential file: a SHA-256 of the
+# token and its expiresAt (unix ms, 0 when absent). The raw token never leaves
+# this function, so nothing downstream can log or persist it. The overlay only
+# ever READS these files - refreshing would rotate the refresh token out from
+# under Claude Code and log the user out.
+function Get-ClaudeCredentialFingerprints {
+    param([string[]]$Paths)
+
+    $fingerprints = [System.Collections.Generic.List[object]]::new()
+    foreach ($path in @($Paths)) {
+        if (-not $path -or -not (Test-Path -LiteralPath $path -PathType Leaf -ErrorAction SilentlyContinue)) { continue }
+
+        try {
+            $oauth = (Get-Content -LiteralPath $path -Raw -Encoding UTF8 -ErrorAction Stop |
+                ConvertFrom-Json -ErrorAction Stop).claudeAiOauth
+        } catch {
+            # Type only: Windows PowerShell's JSON errors echo the input, which
+            # for a half-written credentials file is the raw token.
+            Write-Log "Claude credential fingerprint skipped $path - $($_.Exception.GetType().Name)"
+            continue
+        }
+        if (-not $oauth) { continue }
+        $token = [string]$oauth.accessToken
+        if (-not $token) { continue }
+
+        $expiresAt = 0L
+        if (-not [long]::TryParse([string]$oauth.expiresAt, [ref]$expiresAt)) { $expiresAt = 0L }
+
+        [void]$fingerprints.Add(@{
+            Path      = $path
+            TokenHash = Get-ClaudeTokenHash $token
+            ExpiresAt = $expiresAt
+        })
+    }
+    return $fingerprints.ToArray()
+}
+
+# A token past its expiresAt cannot succeed, and spending a 401 on it only
+# escalates the backoff. Only an all-expired set counts: one unknown expiry or
+# one live token means the fetch loop still has something worth trying.
+function Test-ClaudeCredentialsExpired {
+    param(
+        [long[]]$ExpiresAtUnixMs,
+        [long]$NowUnixMs
+    )
+
+    if (-not $ExpiresAtUnixMs -or $ExpiresAtUnixMs.Count -eq 0) { return $false }
+    foreach ($expiresAt in $ExpiresAtUnixMs) {
+        if ($expiresAt -le 0) { return $false }
+        if ($expiresAt -gt $NowUnixMs) { return $false }
+    }
+    return $true
+}
+
 function Get-ClaudeProjectsDirCandidates {
     param([string[]]$WslHomeRoots = @(Get-WslHomeRoots))
 
@@ -455,18 +550,6 @@ function Get-Usage {
         [switch]$Force
     )
 
-    if (-not $Force) {
-        $backoff = Get-ClaudeBackoffState
-        if ($backoff -and $backoff.Until -and $backoff.Until -gt (Get-Date)) {
-            # Replay the failure's own status/message so the cooldown reflects
-            # its real cause (auth, network, ...) rather than always reading as
-            # a rate limit.
-            if ($backoff.Status)  { $script:State.Status  = $backoff.Status }  else { $script:State.Status = 'stale' }
-            if ($backoff.Message) { $script:State.Message = $backoff.Message } else { $script:State.Message = "Rate limited until $($backoff.Until.ToString('HH:mm'))" }
-            return
-        }
-    }
-
     $credentialPaths = [System.Collections.Generic.List[string]]::new()
     $preferredPath = Get-PreferredClaudeCredentialPath
     if ($preferredPath) { [void]$credentialPaths.Add($preferredPath) }
@@ -477,10 +560,41 @@ function Get-Usage {
         }
     }
     $candidatePaths = @($credentialPaths | Select-Object -Unique)
+    $candidatePaths = @(Get-ClaudeCredentialPathsInPreferenceOrder $candidatePaths)
+
+    # The backoff and expiry decisions both turn on which token is on disk right
+    # now; the first in preference order is the one the fetch loop tries first.
+    $fingerprints = @(Get-ClaudeCredentialFingerprints $candidatePaths)
+    $activeTokenHash = ''
+    if ($fingerprints.Count -gt 0) { $activeTokenHash = [string]$fingerprints[0].TokenHash }
+
+    if (-not $Force) {
+        $backoff = Get-ClaudeBackoffState
+        if (Test-ClaudeBackoffActive -Backoff $backoff -CurrentTokenHash $activeTokenHash) {
+            # Replay the failure's own status/message so the cooldown reflects
+            # its real cause (auth, network, ...) rather than always reading as
+            # a rate limit.
+            if ($backoff.Status)  { $script:State.Status  = $backoff.Status }  else { $script:State.Status = 'stale' }
+            if ($backoff.Message) { $script:State.Message = $backoff.Message } else { $script:State.Message = "Rate limited until $($backoff.Until.ToString('HH:mm'))" }
+            return
+        }
+    }
+
     if ($candidatePaths.Count -eq 0) {
         $script:State.Status = 'error'; $script:State.Message = 'No credentials file'; return
     }
-    $candidatePaths = @(Get-ClaudeCredentialPathsInPreferenceOrder $candidatePaths)
+
+    # Every token on disk is already past its expiresAt, so a request can only
+    # 401. Say what fixes it instead, and key the cooldown to this token so the
+    # poll after Claude Code rotates it goes straight through.
+    $nowMs = [System.DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    $expiries = @($fingerprints | ForEach-Object { [long]$_.ExpiresAt })
+    if (Test-ClaudeCredentialsExpired -ExpiresAtUnixMs $expiries -NowUnixMs $nowMs) {
+        $expiredMessage = 'Token expired - open Claude Code to refresh'
+        [void](Register-ClaudeFailure -Status 'auth' -Message $expiredMessage -MinSeconds 60 -TokenHash $activeTokenHash)
+        $script:State.Status = 'auth'; $script:State.Message = $expiredMessage
+        return
+    }
 
     $resp = $null
     $tok = $null
@@ -520,18 +634,20 @@ function Get-Usage {
         $code = $null
         if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
         if ($code -eq 429) {
+            # Deliberately not keyed to the token: a rate limit is the server
+            # telling us to stop, and a rotation must not walk over it.
             $retryUntil = Get-ResponseRetryAfter $_.Exception.Response
             $until = Register-ClaudeFailure -Status 'stale' -Message '' -RetryAfter $retryUntil -MinSeconds 900
             $script:State.Status = 'stale'
             $script:State.Message = "Rate limited until $($until.ToString('HH:mm'))"
         }
         elseif ($code -eq 401) {
-            [void](Register-ClaudeFailure -Status 'auth' -Message 'Auth expired' -MinSeconds 60)
+            [void](Register-ClaudeFailure -Status 'auth' -Message 'Auth expired' -MinSeconds 60 -TokenHash $activeTokenHash)
             $script:State.Status = 'auth'; $script:State.Message = 'Auth expired'
         }
         else {
             $msg = $_.Exception.Message
-            [void](Register-ClaudeFailure -Status 'stale' -Message $msg -MinSeconds 60)
+            [void](Register-ClaudeFailure -Status 'stale' -Message $msg -MinSeconds 60 -TokenHash $activeTokenHash)
             $script:State.Status = 'stale'; $script:State.Message = $msg
         }
         # A failed usage call means the token/endpoint is already unhappy; do
