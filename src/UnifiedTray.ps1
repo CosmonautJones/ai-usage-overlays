@@ -940,10 +940,14 @@ function Sync-OverlayHotkeyMenuItems {
     }
 }
 
+# Presets are Ctrl+Alt(+Shift)+F-key only: apps rarely bind them, and an F-key
+# never types a character, so AltGr (sent as Ctrl+Alt) cannot collide. Skipped:
+# Ctrl+Alt+F7/F8 (JetBrains), Ctrl+Alt+F12 (Intel graphics panel), and
+# Ctrl+Alt+Shift+F9/F10, which tests/HotkeyProbe.ps1 claims while it runs.
 $miHotkeys = New-StripItem 'Hotkeys' $null
 foreach ($spec in @(
-    @{ Action = 'Toggle';  Label = 'Show/hide overlay'; Combos = @('Ctrl+Alt+A', 'Ctrl+Alt+U', 'Ctrl+Shift+A', 'Shift+F9', 'Shift+F10') },
-    @{ Action = 'Refresh'; Label = 'Refresh now';       Combos = @('Ctrl+Alt+F5', 'Ctrl+Shift+F5', 'Shift+F5', 'Shift+F8', 'Ctrl+Alt+Space') })) {
+    @{ Action = 'Toggle';  Label = 'Show/hide overlay'; Combos = @('Ctrl+Alt+F6', 'Ctrl+Alt+F11', 'Ctrl+Alt+Shift+F6', 'Ctrl+Alt+Shift+F11') },
+    @{ Action = 'Refresh'; Label = 'Refresh now';       Combos = @('Ctrl+Alt+F5', 'Ctrl+Alt+F10', 'Ctrl+Alt+Shift+F5', 'Ctrl+Alt+Shift+F12') })) {
     $action = $spec.Action
     $items = @{}
     $miAction = New-StripItem $spec.Label $null

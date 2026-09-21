@@ -444,6 +444,98 @@ Describe 'Hotkey source structure' {
     }
 }
 
+Describe 'Hotkey tray presets' {
+    BeforeAll {
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+        $root = Split-Path $PSScriptRoot -Parent
+        function Write-Log { param([string]$Message) }
+        . (Join-Path $root 'src\Dropdown.ps1')
+        $traySource = Get-Content (Join-Path $root 'src\UnifiedTray.ps1') -Raw -Encoding UTF8
+
+        function Get-QuotedCombos([string]$List) {
+            return @([regex]::Matches($List, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value })
+        }
+
+        # Action name -> the combos its Hotkeys submenu offers.
+        $script:TrayPresets = @{}
+        foreach ($m in [regex]::Matches($traySource, "Action\s*=\s*'(?<action>\w+)'[^\r\n]*?Combos\s*=\s*@\((?<combos>[^)]*)\)")) {
+            $script:TrayPresets[$m.Groups['action'].Value] = Get-QuotedCombos $m.Groups['combos'].Value
+        }
+        $script:DropdownPresets = Get-QuotedCombos ([regex]::Match(
+            $traySource, "(?s)New-StripItem 'Drop-down hotkey'.*?foreach \(\`$combo in @\((?<combos>[^)]*)\)"
+        ).Groups['combos'].Value)
+
+        # RegisterHotKey is global: a preset takes its combo away from every app.
+        $script:ReservedCombos = @(
+            'Shift+F10'      # Windows: open the context menu from the keyboard
+            'Shift+F5'       # browsers: hard reload; VS Code/Cursor: stop debugging
+            'Ctrl+Shift+F5'  # VS Code/Cursor: restart debugging
+            'Ctrl+Shift+A'   # Chrome/Edge: search tabs
+            'Shift+F8'       # VS Code/Cursor: previous problem
+            'Shift+F9'       # VS Code/Cursor: inline breakpoint
+            'Ctrl+Alt+A'     # AltGr+A types a character on Polish and other layouts
+        )
+
+        # Compare by what RegisterHotKey would receive, not by spelling.
+        function Get-ComboKey([string]$Combo) {
+            $spec = ConvertTo-HotkeySpec $Combo
+            if (-not $spec) { return $null }
+            return '{0}:{1}' -f $spec.Mods, $spec.Vk
+        }
+    }
+
+    It 'finds the presets for both new actions' {
+        $script:TrayPresets.Keys | Should -Contain 'Toggle'
+        $script:TrayPresets.Keys | Should -Contain 'Refresh'
+        $script:DropdownPresets.Count | Should -BeGreaterThan 0
+    }
+
+    It 'offers at least three presets for <Action>' -ForEach @(@{ Action = 'Toggle' }, @{ Action = 'Refresh' }) {
+        $script:TrayPresets[$Action].Count | Should -BeGreaterOrEqual 3
+    }
+
+    It 'can parse every entry on the reserved list' {
+        foreach ($combo in $script:ReservedCombos) {
+            Get-ComboKey $combo | Should -Not -BeNullOrEmpty -Because "'$combo' must parse or the guard below is vacuous"
+        }
+    }
+
+    It 'never offers a combo that Windows or common apps already rely on' {
+        $reserved = @($script:ReservedCombos | ForEach-Object { Get-ComboKey $_ })
+        foreach ($action in $script:TrayPresets.Keys) {
+            foreach ($combo in $script:TrayPresets[$action]) {
+                $reserved | Should -Not -Contain (Get-ComboKey $combo) -Because "$action offers '$combo'"
+            }
+        }
+    }
+
+    It 'builds every preset from Ctrl+Alt and an F-key so AltGr cannot collide' {
+        foreach ($action in $script:TrayPresets.Keys) {
+            foreach ($combo in $script:TrayPresets[$action]) {
+                $spec = ConvertTo-HotkeySpec $combo
+                $spec | Should -Not -BeNullOrEmpty -Because "$action offers '$combo'"
+                ($spec.Vk -ge 0x70 -and $spec.Vk -le 0x7B) | Should -BeTrue -Because "'$combo' should use F1-F12"
+                ($spec.Mods -band 3) | Should -Be 3 -Because "'$combo' should hold Ctrl+Alt"
+                ($spec.Mods -band 8) | Should -Be 0 -Because "'$combo' should leave the Windows key alone"
+            }
+        }
+    }
+
+    It 'never offers the same combo for two actions' {
+        $seen = @{}
+        foreach ($action in $script:TrayPresets.Keys) {
+            foreach ($combo in $script:TrayPresets[$action]) {
+                $key = Get-ComboKey $combo
+                $seen.ContainsKey($key) | Should -BeFalse -Because "'$combo' is offered for both $($seen[$key]) and $action"
+                $seen[$key] = $action
+            }
+        }
+        foreach ($combo in $script:DropdownPresets) {
+            $seen.ContainsKey((Get-ComboKey $combo)) | Should -BeFalse -Because "'$combo' is already a drop-down preset"
+        }
+    }
+}
+
 Describe 'Hotkey registration against the real Windows table' {
     It 'registers, re-binds and releases several hotkeys on one window' {
         $shell = (Get-Process -Id $PID).Path
