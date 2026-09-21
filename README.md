@@ -2,7 +2,7 @@
 
 Always-on-top Windows HUD for **Claude Code**, **Codex**, **Cursor**, and **Grok** - live quotas, local totals, and history sparks in one tray app.
 
-**Version 0.4.2** (`v0.4.2`, unreleased) — right-click the tray → **Updates** → Version. Last published installer is [v0.4.1](https://github.com/CosmonautJones/ai-usage-overlays/releases/tag/v0.4.1).
+**Version 0.4.2** (`v0.4.2`) — shown in the overlay footer, which turns amber when an update is waiting. Latest release: [v0.4.2](https://github.com/CosmonautJones/ai-usage-overlays/releases/tag/v0.4.2).
 
 ![Unified overlay preview](docs/preview.png)
 
@@ -37,7 +37,7 @@ That installs under `%LOCALAPPDATA%\AIUsageOverlay` and starts the unified overl
 
 Or clone and run `Install.bat`. Login autostart uses `Start-Unified.vbs`.
 
-Optional Windows installer (last published build): [AIUsageOverlaySetup.exe](https://github.com/CosmonautJones/ai-usage-overlays/releases/download/v0.4.1/AIUsageOverlaySetup.exe) from [Releases](https://github.com/CosmonautJones/ai-usage-overlays/releases) (`v0.4.1`). This checkout is **0.4.2** and is not that EXE until a new tag. Prefer `irm|iex` above unless you specifically want the published installer.
+Optional Windows installer: [AIUsageOverlaySetup.exe](https://github.com/CosmonautJones/ai-usage-overlays/releases/download/v0.4.2/AIUsageOverlaySetup.exe) from [Releases](https://github.com/CosmonautJones/ai-usage-overlays/releases) (`v0.4.2`). Once installed, the overlay updates itself: tray → **Updates** → **Check for updates** → **Install update**.
 
 ## Choose providers (first run)
 
