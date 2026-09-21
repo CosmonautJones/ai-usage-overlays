@@ -55,6 +55,10 @@ function Wire-UnifiedWindowEvents {
             $header.Add_MouseLeftButtonUp([scriptblock]::Create("Toggle-Section '$sectionKey'; Sync-SectionMenuItems"))
         }
     }
+
+    # Global hotkeys go here rather than at file scope: this file is loaded before
+    # the saved config is, while this runs after it. Re-registering is idempotent.
+    if (Get-Command Register-OverlayHotkeys -ErrorAction SilentlyContinue) { Register-OverlayHotkeys }
 }
 
 function Toggle-PinnedWindow {
@@ -921,6 +925,47 @@ $miHideFocus.Checked = [bool]$script:Cfg['DropdownHideOnFocusLoss']
 [void]$miView.DropDownItems.Add($miHideFocus)
 [void]$script:ctxStrip.Items.Add($miView)
 Sync-ViewModeMenuItems
+
+# Global hotkeys for the everyday actions. Both ship unbound, so each submenu
+# leads with an explicit way back to that state.
+$script:hotkeyMenuItems = @{}
+function Sync-OverlayHotkeyMenuItems {
+    if (-not (Get-Command Get-HotkeyAction -ErrorAction SilentlyContinue)) { return }
+    foreach ($action in @($script:hotkeyMenuItems.Keys)) {
+        $entry = Get-HotkeyAction $action
+        if (-not $entry) { continue }
+        $cur = [string]$script:Cfg[$entry.ConfigKey]
+        $items = $script:hotkeyMenuItems[$action]
+        foreach ($k in @($items.Keys)) { $items[$k].Checked = ($k -eq $cur) }
+    }
+}
+
+$miHotkeys = New-StripItem 'Hotkeys' $null
+foreach ($spec in @(
+    @{ Action = 'Toggle';  Label = 'Show/hide overlay'; Combos = @('Ctrl+Alt+A', 'Ctrl+Alt+U', 'Ctrl+Shift+A', 'Shift+F9', 'Shift+F10') },
+    @{ Action = 'Refresh'; Label = 'Refresh now';       Combos = @('Ctrl+Alt+F5', 'Ctrl+Shift+F5', 'Shift+F5', 'Shift+F8', 'Ctrl+Alt+Space') })) {
+    $action = $spec.Action
+    $items = @{}
+    $miAction = New-StripItem $spec.Label $null
+    $none = New-StripItem 'None (unbound)' ([scriptblock]::Create("Set-OverlayHotkey '$action' ''; Save-UnifiedState; Sync-OverlayHotkeyMenuItems"))
+    $none.CheckOnClick = $false
+    $items[''] = $none
+    [void]$miAction.DropDownItems.Add($none)
+    [void]$miAction.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    foreach ($combo in $spec.Combos) {
+        $c = $combo
+        $sub = New-StripItem $c ([scriptblock]::Create("Set-OverlayHotkey '$action' '$c'; Save-UnifiedState; Sync-OverlayHotkeyMenuItems"))
+        $sub.CheckOnClick = $false
+        $items[$c] = $sub
+        [void]$miAction.DropDownItems.Add($sub)
+    }
+    $script:hotkeyMenuItems[$action] = $items
+    [void]$miHotkeys.DropDownItems.Add($miAction)
+}
+[void]$script:ctxStrip.Items.Add($miHotkeys)
+Sync-OverlayHotkeyMenuItems
+# The saved config loads after this file, so re-sync the checks on every open.
+$script:ctxStrip.add_Opening({ Sync-OverlayHotkeyMenuItems })
 Add-Separator
 
 # Snap to corner
