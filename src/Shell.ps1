@@ -989,7 +989,15 @@ function Set-BarSubText($el, [string]$text) {
     }
 }
 
-function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt, [string]$AccentFg = $null) {
+# Carried-forward Claude numbers stay on screen - they are the last real
+# reading - but a countdown drawn from a reset time we can no longer refresh is
+# not. Say when the numbers were read instead.
+function Format-ClaudeStaleReset([string]$AsOf) {
+    if ([string]::IsNullOrWhiteSpace($AsOf)) { return 'stale' }
+    return ('as of {0}' -f $AsOf.Trim())
+}
+
+function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt, [string]$AccentFg = $null, [string]$ResetOverride = $null) {
     $b  = $script:window.FindName($bar)
     $p  = $script:window.FindName($pct)
     $sb = if ($sub)   { $script:window.FindName($sub)   } else { $null }
@@ -1009,7 +1017,9 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
         $subText = if ($u -ge $script:CritPct) { 'critical!' } elseif ($u -ge $script:WarnPct) { 'high' } else { 'used' }
         Set-BarSubText $sb $subText
     }
-    if ($r)  { $r.Text  = Format-Reset $resetsAt }
+    if ($r) {
+        if ($ResetOverride) { $r.Text = $ResetOverride } else { $r.Text = Format-Reset $resetsAt }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -1498,6 +1508,19 @@ function Update-ClaudeSection {
     }
 
     $d = if ($script:State) { $script:State.Data } else { $null }
+
+    # Stale = last good numbers carried past a failed poll. Dim them and swap
+    # every countdown for the fetch time, so they do not pass for live data.
+    $stale = ($null -ne $d) -and [bool]$script:State.Stale
+    $resetOverride = ''
+    $claudeOpacity = 1.0
+    if ($stale) {
+        $resetOverride = Format-ClaudeStaleReset ([string]$script:State.DataAsOf)
+        $claudeOpacity = 0.55
+    }
+    $claudeBody = $script:window.FindName('claudeBody')
+    if ($claudeBody) { $claudeBody.Opacity = $claudeOpacity }
+
     if ($null -eq $d) {
         Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $null $null -AccentFg $script:AccentFiveh
         Set-SectionBar 'weekBar'  'weekPct'  'weekSub'  'weekReset'  $null $null -AccentFg $script:AccentWeek
@@ -1511,28 +1534,31 @@ function Update-ClaudeSection {
 
     $hasAlert = [bool](Get-Command Check-Alert -ErrorAction SilentlyContinue)
 
-    $hd = $script:window.FindName('claudeHeaderDetail'); if ($hd) { $hd.Text = Format-Reset $d.five_hour.resets_at }
+    $hd = $script:window.FindName('claudeHeaderDetail')
+    if ($hd) {
+        if ($resetOverride) { $hd.Text = $resetOverride } else { $hd.Text = Format-Reset $d.five_hour.resets_at }
+    }
 
-    Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at -AccentFg $script:AccentFiveh
+    Set-SectionBar 'fivehBar' 'fivehPct' 'fivehSub' 'fivehReset' $d.five_hour.utilization $d.five_hour.resets_at -AccentFg $script:AccentFiveh -ResetOverride $resetOverride
     Set-CompactBar 'fivehBarC' 'fivehPctC' $d.five_hour.utilization -AccentFg $script:AccentFiveh
     Set-Spark 'fivehSpark' 'fivehSparkCanvas' 'five_hour' 'fivehSparkRow'
     Set-Spark 'fivehSparkC' 'fivehSparkCanvasC' 'five_hour' 'fivehSparkRowC'
     if ($hasAlert) { Check-Alert 'five_hour' $d.five_hour.utilization }
 
-    Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at -AccentFg $script:AccentWeek
+    Set-SectionBar 'weekBar' 'weekPct' 'weekSub' 'weekReset' $d.seven_day.utilization $d.seven_day.resets_at -AccentFg $script:AccentWeek -ResetOverride $resetOverride
     Set-CompactBar 'weekBarC' 'weekPctC' $d.seven_day.utilization -AccentFg $script:AccentWeek
     Set-Spark 'weekSpark' 'weekSparkCanvas' 'seven_day' 'weekSparkRow'
     Set-Spark 'weekSparkC' 'weekSparkCanvasC' 'seven_day' 'weekSparkRowC'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
-    Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab
+    Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab -ResetOverride $resetOverride
     Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization -AccentFg $script:AccentFab
     if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible
         $oc = $script:window.FindName('opusRowC'); if ($oc) { $oc.Visibility = [System.Windows.Visibility]::Visible }
-        Set-SectionBar 'opusBar' 'opusPct' 'opusSub' 'opusReset' $d.seven_day_opus.utilization $d.seven_day_opus.resets_at -AccentFg $script:AccentOpus
+        Set-SectionBar 'opusBar' 'opusPct' 'opusSub' 'opusReset' $d.seven_day_opus.utilization $d.seven_day_opus.resets_at -AccentFg $script:AccentOpus -ResetOverride $resetOverride
         Set-CompactBar 'opusBarC' 'opusPctC' $d.seven_day_opus.utilization -AccentFg $script:AccentOpus
         if ($hasAlert) { Check-Alert 'seven_day_opus' $d.seven_day_opus.utilization }
     } else {
