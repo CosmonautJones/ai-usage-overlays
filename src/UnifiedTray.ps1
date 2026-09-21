@@ -377,6 +377,12 @@ function Test-AppUpdateCheckJobRunning {
 }
 
 function Sync-UpdateMenuItems {
+    # The footer version is the in-overlay update signal; repaint it on every
+    # update-state change, ahead of the menu guard so it never gets skipped.
+    if (Get-Command Update-FooterVersion -ErrorAction SilentlyContinue) {
+        Update-FooterVersion
+    }
+
     if (-not $script:updateItems -or -not $script:updateItems.ContainsKey('install')) { return }
 
     $state = $script:UpdateState
