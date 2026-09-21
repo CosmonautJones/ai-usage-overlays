@@ -28,6 +28,55 @@ $xaml = @'
       <GradientStop Color="#C084FC28" Offset="0.75"/>
       <GradientStop Color="Transparent" Offset="1"/>
     </LinearGradientBrush>
+
+    <!-- Thin overlay scrollbar. The progress bars are a fixed 250px wide, so a
+         scrollbar that took layout width would clip them; this one is drawn on
+         top of the content column instead. -->
+    <Style x:Key="OverlayScrollBar" TargetType="ScrollBar">
+      <Setter Property="Width" Value="4"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <!-- Negative right margin parks the bar in the panel's 14px gutter, clear
+           of the 250px-wide progress tracks it would otherwise sit on top of. -->
+      <Setter Property="Margin" Value="0,2,-9,2"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Border Background="#22000000" CornerRadius="2" Width="4">
+              <Track x:Name="PART_Track" IsDirectionReversed="True" ViewportSize="NaN">
+                <Track.Thumb>
+                  <Thumb MinHeight="24">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border Background="#7038BDF8" CornerRadius="2"/>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/>
+                </Track.IncreaseRepeatButton>
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/>
+                </Track.DecreaseRepeatButton>
+              </Track>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <ControlTemplate x:Key="OverlayScrollViewer" TargetType="ScrollViewer">
+      <Grid>
+        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"/>
+        <ScrollBar x:Name="PART_VerticalScrollBar" Orientation="Vertical"
+                   Style="{StaticResource OverlayScrollBar}"
+                   HorizontalAlignment="Right"
+                   Value="{TemplateBinding VerticalOffset}"
+                   Maximum="{TemplateBinding ScrollableHeight}"
+                   ViewportSize="{TemplateBinding ViewportHeight}"
+                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+      </Grid>
+    </ControlTemplate>
   </Window.Resources>
 
   <Grid>
@@ -102,10 +151,10 @@ $xaml = @'
         </Border.Background>
       </Border>
 
-      <StackPanel Margin="14,9,14,13" Width="250">
+      <StackPanel Margin="14,8,14,9" Width="250">
 
         <!-- Chrome header -->
-        <Grid Margin="0,0,0,11">
+        <Grid Margin="0,0,0,8">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
@@ -120,10 +169,24 @@ $xaml = @'
                      Foreground="#7B9EC4" FontSize="11" FontFamily="Consolas" VerticalAlignment="Center"/>
         </Grid>
 
+        <!-- ======================================================
+             Scroll region: the four provider sections. Fully expanded the
+             accordion wants more height than a short monitor's work area, so
+             Resize-ToContent gives this a MaxHeight (Layout.ps1 does the math)
+             and the overflow scrolls instead of hanging off the screen. The
+             chrome header and footer stay pinned outside it.
+             The sections below are intentionally left at their original
+             indent level; only this wrapper was added around them.
+             ====================================================== -->
+        <ScrollViewer x:Name="sectionScroll"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Template="{StaticResource OverlayScrollViewer}">
+        <StackPanel x:Name="sectionStack">
         <!-- ============ CLAUDE SECTION ============ -->
-        <StackPanel x:Name="claudeSection" Margin="0,0,0,4">
+        <StackPanel x:Name="claudeSection" Margin="0,0,0,2">
           <Border x:Name="claudeHeader" Background="#11FFFFFF" CornerRadius="6"
-                  Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
+                  Padding="7,3" Margin="0,0,0,4" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
@@ -147,15 +210,15 @@ $xaml = @'
            <StackPanel x:Name="claudeFull">
 
             <!-- 5h metric -->
-            <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,3">
+            <StackPanel Margin="0,0,0,6">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="fivehLabel" Grid.Column="0" Text="5-HOUR SESSION"
                            Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="fivehPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="fivehReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -168,20 +231,20 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="fivehSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="fivehSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
             <!-- Weekly metric -->
-            <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,3">
+            <StackPanel Margin="0,0,0,6">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="weekLabel" Grid.Column="0" Text="WEEKLY LIMIT"
                            Foreground="#FB923C" FontSize="8" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="weekPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="weekReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -194,20 +257,20 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="weekSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="weekSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
             <!-- Fable metric -->
-            <StackPanel Margin="0,0,0,7">
-              <Grid Margin="0,0,0,3">
+            <StackPanel Margin="0,0,0,6">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="fabLabel" Grid.Column="0" Text="FABLE WEEKLY"
                            Foreground="#C084FC" FontSize="8" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="fabPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="fabReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -220,20 +283,20 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="fabSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="fabSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
             <!-- Opus metric (collapsed unless used) -->
-            <StackPanel x:Name="opusRow" Margin="0,0,0,7" Visibility="Collapsed">
-              <Grid Margin="0,0,0,3">
+            <StackPanel x:Name="opusRow" Margin="0,0,0,6" Visibility="Collapsed">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="opusLabel" Grid.Column="0" Text="OPUS WEEKLY"
                            Foreground="#FDE047" FontSize="8" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="opusPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="opusReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -246,7 +309,7 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="opusSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="opusSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
@@ -261,42 +324,42 @@ $xaml = @'
               </Canvas>
             </StackPanel>
 
-            <Border Height="1" Background="{StaticResource Divider}" Margin="0,4,0,8"/>
+            <Border Height="1" Background="{StaticResource Divider}" Margin="0,3,0,5"/>
 
             <!-- Stats -->
             <StackPanel x:Name="statsPanel">
-              <Grid Margin="0,0,0,2">
+              <Grid Margin="0,0,0,1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="ACCOUNT" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="claudeIdentityText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"
                            TextTrimming="CharacterEllipsis"/>
               </Grid>
-              <Grid Margin="0,0,0,2">
+              <Grid Margin="0,0,0,1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="valText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
               </Grid>
-              <Grid x:Name="extraRow" Margin="0,0,0,2" Visibility="Collapsed">
+              <Grid x:Name="extraRow" Margin="0,0,0,1" Visibility="Collapsed">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="OVERAGE" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="extraVal" Text="" Foreground="#FBB740" FontSize="11" FontFamily="Consolas"/>
               </Grid>
-              <Grid Margin="0,0,0,2">
+              <Grid Margin="0,0,0,1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="TOKENS" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="tokText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
               </Grid>
-              <Grid Margin="0,0,0,2">
+              <Grid Margin="0,0,0,1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="TODAY" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="todayText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
               </Grid>
-              <Grid Margin="0,0,0,2">
+              <Grid Margin="0,0,0,1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="AFTER HRS" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
@@ -375,9 +438,9 @@ $xaml = @'
         </StackPanel>
 
         <!-- ============ CODEX SECTION ============ -->
-        <StackPanel x:Name="codexSection" Margin="0,0,0,4">
+        <StackPanel x:Name="codexSection" Margin="0,0,0,2">
           <Border x:Name="codexHeader" Background="#11FFFFFF" CornerRadius="6"
-                  Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
+                  Padding="7,3" Margin="0,0,0,4" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
@@ -403,15 +466,15 @@ $xaml = @'
                        FontSize="11" FontFamily="Bahnschrift SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
             <!-- 5-HOUR metric (hidden unless FiveHourPct is present) -->
-            <StackPanel x:Name="codexFivehRow" Margin="0,0,0,10" Visibility="Collapsed">
-              <Grid Margin="0,0,0,3">
+            <StackPanel x:Name="codexFivehRow" Margin="0,0,0,6" Visibility="Collapsed">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="codexFivehLabel" Grid.Column="0" Text="5-HOUR"
                            Foreground="#38BDF8" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="codexFivehPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="codexFivehReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -424,7 +487,7 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="codexFivehSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="codexFivehSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
               <StackPanel x:Name="codexFivehSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
                 <Canvas x:Name="codexFivehSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
@@ -433,15 +496,15 @@ $xaml = @'
               </StackPanel>
             </StackPanel>
             <!-- Weekly metric (Codex now exposes a single weekly limit) -->
-            <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,3">
+            <StackPanel Margin="0,0,0,6">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="codexWeekLabel" Grid.Column="0" Text="WEEKLY"
                            Foreground="#FB923C" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="codexWeekPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="codexWeekReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -454,7 +517,7 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="codexWeekSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="codexWeekSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
               <StackPanel x:Name="codexWeekSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
                 <Canvas x:Name="codexWeekSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
@@ -463,31 +526,31 @@ $xaml = @'
               </StackPanel>
             </StackPanel>
 
-            <Grid x:Name="codexResetsRow" Margin="0,0,0,2">
+            <Grid x:Name="codexResetsRow" Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="RESETS" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexResetsText" Text="--" Foreground="#4ADE80" FontSize="12" FontFamily="Consolas"/>
             </Grid>
-            <Grid Margin="0,0,0,2">
+            <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexValText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
             </Grid>
-            <Grid Margin="0,0,0,2">
+            <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="TOKENS" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexTokText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
             </Grid>
-            <Grid Margin="0,0,0,2">
+            <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="TODAY" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexTodayText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
             </Grid>
-            <Grid Margin="0,0,0,2">
+            <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="AFTER HRS" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
@@ -543,9 +606,9 @@ $xaml = @'
         </StackPanel>
 
         <!-- ============ CURSOR SECTION ============ -->
-        <StackPanel x:Name="cursorSection" Margin="0,0,0,4">
+        <StackPanel x:Name="cursorSection" Margin="0,0,0,2">
           <Border x:Name="cursorHeader" Background="#11FFFFFF" CornerRadius="6"
-                  Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
+                  Padding="7,3" Margin="0,0,0,4" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
@@ -568,8 +631,8 @@ $xaml = @'
            <StackPanel x:Name="cursorFull">
 
             <!-- MODELS (plan %) — Codex-clean primary meter -->
-            <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,3">
+            <StackPanel Margin="0,0,0,6">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
@@ -581,7 +644,7 @@ $xaml = @'
                   <TextBlock Text="over" Foreground="#FBBF24" FontSize="9" FontFamily="Bahnschrift SemiBold"/>
                 </Border>
                 <TextBlock Grid.Column="2" x:Name="reqCount" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="3" x:Name="reqReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -594,7 +657,7 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="reqSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="reqSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
               <StackPanel x:Name="cursorReqSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
                 <Canvas x:Name="cursorReqSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
@@ -604,7 +667,7 @@ $xaml = @'
             </StackPanel>
 
             <!-- OTHER — secondary like Codex RESETS -->
-            <Grid x:Name="otherModelsRow" Margin="0,0,0,2">
+            <Grid x:Name="otherModelsRow" Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock x:Name="otherModelsLabel" Grid.Column="0" Text="OTHER"
                          Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
@@ -612,7 +675,7 @@ $xaml = @'
             </Grid>
 
             <!-- ON-DEMAND secondary (Off / $) -->
-            <Grid x:Name="onDemandRow" Margin="0,0,0,2">
+            <Grid x:Name="onDemandRow" Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock x:Name="onDemandLabel" Grid.Column="0" Text="ON-DEMAND"
                          Foreground="#7EC4A6" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
@@ -678,9 +741,9 @@ $xaml = @'
 
 
         <!-- ============ GROK SECTION ============ -->
-        <StackPanel x:Name="grokSection" Margin="0,0,0,4">
+        <StackPanel x:Name="grokSection" Margin="0,0,0,2">
           <Border x:Name="grokHeader" Background="#11FFFFFF" CornerRadius="6"
-                  Padding="7,5" Margin="0,0,0,6" Cursor="Hand">
+                  Padding="7,3" Margin="0,0,0,4" Cursor="Hand">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
@@ -704,15 +767,15 @@ $xaml = @'
             <TextBlock x:Name="grokErrText" Text="" Foreground="#94A3B8"
                        FontSize="11" FontFamily="Bahnschrift SemiBold"
                        TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
-            <StackPanel Margin="0,0,0,10">
-              <Grid Margin="0,0,0,3">
+            <StackPanel Margin="0,0,0,6">
+              <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="grokWeekLabel" Grid.Column="0" Text="WEEKLY"
                            Foreground="#FDE68A" FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Bottom"/>
                 <TextBlock Grid.Column="1" x:Name="grokWeekPct" Text="--" Foreground="#F1F5F9"
-                           FontSize="20" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
+                           FontSize="18" FontFamily="Bahnschrift Bold" VerticalAlignment="Bottom" Margin="0,0,4,0"/>
                 <TextBlock Grid.Column="2" x:Name="grokWeekReset" Text=""
                            Foreground="#7BA8C8" FontSize="10" FontFamily="Consolas" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
               </Grid>
@@ -725,7 +788,7 @@ $xaml = @'
                   </Border.Background>
                 </Border>
               </Border>
-              <TextBlock x:Name="grokWeekSub" Text="used" Foreground="#5C7A96"
+              <TextBlock x:Name="grokWeekSub" Visibility="Collapsed" Text="used" Foreground="#5C7A96"
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
               <StackPanel x:Name="grokWeekSparkRow" Visibility="Collapsed" Margin="0,2,0,0">
                 <Canvas x:Name="grokWeekSparkCanvas" Width="250" Height="14" HorizontalAlignment="Left">
@@ -733,13 +796,13 @@ $xaml = @'
                 </Canvas>
               </StackPanel>
             </StackPanel>
-            <Grid Margin="0,0,0,2">
+            <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="USAGE" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Top" Margin="0,2,0,0"/>
               <TextBlock Grid.Column="1" x:Name="grokPlanText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas" TextWrapping="Wrap" LineHeight="16"/>
             </Grid>
-            <Grid Margin="0,0,0,2">
+            <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="RESETS" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
@@ -773,9 +836,11 @@ $xaml = @'
            </StackPanel>
           </StackPanel>
         </StackPanel>
+        </StackPanel>
+        </ScrollViewer>
 
         <!-- Footer divider -->
-        <Border Height="1" Background="{StaticResource Divider}" Margin="0,6,0,8"/>
+        <Border Height="1" Background="{StaticResource Divider}" Margin="0,4,0,5"/>
 
         <!-- TravOS footer -->
         <Grid>
@@ -900,6 +965,20 @@ function Set-GrokProductUsageVisual($tb, [string]$text, [string]$AccentFg) {
     }
 }
 
+# Set-BarSubText - writes a bar's sub-label and collapses the row when the text
+# is the bare 'used' filler. That row costs ~12 DIP and repeats under all six
+# metrics; hiding it is what buys the fully-expanded accordion its screen fit.
+# Warn/crit words and Cursor's request count are information, so they stay.
+function Set-BarSubText($el, [string]$text) {
+    if (-not $el) { return }
+    $el.Text = $text
+    $el.Visibility = if (Test-BarSubVisible $text) {
+        [System.Windows.Visibility]::Visible
+    } else {
+        [System.Windows.Visibility]::Collapsed
+    }
+}
+
 function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset, $util, $resetsAt, [string]$AccentFg = $null) {
     $b  = $script:window.FindName($bar)
     $p  = $script:window.FindName($pct)
@@ -908,7 +987,7 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
     if (-not $b -or -not $p) { return }
     if ($null -eq $util) {
         Set-BarWidth $b 0; $p.Text = '--'; Set-PctAccentStyle $p '#F1F5F9'
-        if ($sb) { $sb.Text = 'used' }
+        if ($sb) { Set-BarSubText $sb 'used' }
         if ($r)  { $r.Text  = '' }
         return
     }
@@ -916,7 +995,10 @@ function Set-SectionBar([string]$bar, [string]$pct, [string]$sub, [string]$reset
     Set-BarWidth $b ([math]::Max(0, [math]::Min($script:BarTrackWidth, [math]::Round($u / 100.0 * $script:BarTrackWidth))))
     $p.Text   = ('{0:0}%' -f $u)
     Set-PctAccentStyle $p (Resolve-PctAccentFg $u $AccentFg)
-    if ($sb) { $sb.Text = if ($u -ge $script:CritPct) { 'critical!' } elseif ($u -ge $script:WarnPct) { 'high' } else { 'used' } }
+    if ($sb) {
+        $subText = if ($u -ge $script:CritPct) { 'critical!' } elseif ($u -ge $script:WarnPct) { 'high' } else { 'used' }
+        Set-BarSubText $sb $subText
+    }
     if ($r)  { $r.Text  = Format-Reset $resetsAt }
 }
 
@@ -1221,6 +1303,36 @@ function Measure-ContentHeight([switch]$SkipArrange) {
 }
 
 # ---------------------------------------------------------------------------
+# Measure-FittedSize - measure the content, then make it fit the monitor.
+#
+# Measuring is done twice on purpose. The first pass runs with the section
+# ScrollViewer unclamped so we learn what the accordion actually wants; if that
+# overflows the work area, the overflow is taken out of the scroll region and we
+# measure again so the caller gets a size that is really achievable. Returns the
+# size to apply to the window.
+# ---------------------------------------------------------------------------
+function Measure-FittedSize([switch]$SkipArrange) {
+    $sv = $script:window.FindName('sectionScroll')
+    if (-not $sv) { return (Measure-ContentHeight -SkipArrange:$SkipArrange) }
+
+    # Pass 1: no clamp, so DesiredSize is the true appetite.
+    $sv.MaxHeight = [double]::PositiveInfinity
+    $size = Measure-ContentHeight -SkipArrange:$SkipArrange
+
+    $wa = Get-WorkArea
+    $budget = Get-FitBudget -WorkAreaHeight ($wa.Bottom - $wa.Top)
+    $natural = $sv.DesiredSize.Height
+    $max = Get-SectionScrollMaxHeight -DesiredTotal $size.Height -ScrollNatural $natural -Budget $budget
+    if ($null -eq $max) { return $size }
+
+    # Pass 2: the scroll region gives up the overflow and scrolls it instead.
+    $sv.MaxHeight = $max
+    $size = Measure-ContentHeight -SkipArrange:$SkipArrange
+    $h = Get-ClampedWindowHeight -DesiredTotal $size.Height -Budget $budget
+    return [System.Windows.Size]::new($size.Width, $h)
+}
+
+# ---------------------------------------------------------------------------
 # Resize-ToContent - non-animated: snap Window.Width/Height to the measured
 # content size. Called after content-changing refreshes (opus row appears,
 # error text) so the box keeps fitting even though SizeToContent is Manual.
@@ -1234,7 +1346,7 @@ function Resize-ToContent([switch]$SkipDeferred) {
         Resize-QuakeToContent
         return
     }
-    $size = Measure-ContentHeight
+    $size = Measure-FittedSize
     if ($size.Width  -gt 0) { $root.Width  = $size.Width }
     if ($size.Height -gt 0) { $root.Height = $size.Height }
     $root.UpdateLayout()
@@ -1277,7 +1389,7 @@ function Toggle-Section([string]$key) {
     # Apply the visibility/chevron change, then measure the new desired size
     # without arranging the final layout before the animation starts.
     Set-Section $key $expanded
-    $size = Measure-ContentHeight -SkipArrange
+    $size = Measure-FittedSize -SkipArrange
     $to = $size.Height
     if ($to -le 0) { $to = $root.ActualHeight }
     # Width is intrinsic; pin it now (SizeToContent is Manual).
@@ -1650,9 +1762,9 @@ function Update-CursorSection {
     }
     if ($sub) {
         if ($hasBar -and $countText -match '/') {
-            $sub.Text = $countText
+            Set-BarSubText $sub $countText
         } else {
-            $sub.Text = 'used'
+            Set-BarSubText $sub 'used'
         }
     }
     $rcc = $script:window.FindName('reqCountC')

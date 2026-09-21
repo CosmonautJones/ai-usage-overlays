@@ -380,6 +380,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\ProviderLinks.ps1')
 . (Join-Path $script:AppDir 'src\Export.ps1')
 . (Join-Path $script:AppDir 'src\InstallManifest.ps1')
+. (Join-Path $script:AppDir 'src\Layout.ps1')
 . (Join-Path $script:AppDir 'src\Shell.ps1')
 . (Join-Path $script:AppDir 'src\UnifiedState.ps1')
 . (Join-Path $script:AppDir 'src\ProviderPicker.ps1')
