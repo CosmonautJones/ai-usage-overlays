@@ -430,6 +430,11 @@ function Copy-Stats {
         $usage = $script:State.Data
     }
 
+    $ledger = $null
+    if (Get-Command Get-UsageLedgerClipboardMath -ErrorAction SilentlyContinue) {
+        try { $ledger = Get-UsageLedgerClipboardMath } catch { $ledger = $null }
+    }
+
     $lines = Get-UnifiedExportLines `
         -ClaudeIdentity $script:ClaudeIdentity `
         -ClaudeUsage $usage `
@@ -438,7 +443,30 @@ function Copy-Stats {
         -CursorSummary $script:SummaryData `
         -CursorLocal $script:LocalData `
         -GrokUsage $script:GrokUsage `
-        -Sections $sections
+        -Sections $sections `
+        -LedgerMath $ledger
 
     [System.Windows.Clipboard]::SetText(($lines -join "`n"))
+}
+
+function Copy-UsageLedger {
+    $blocks = [System.Collections.Generic.List[string]]::new()
+    if (Get-Command Get-StoredUsageHistory -ErrorAction SilentlyContinue) {
+        try {
+            $history = Get-StoredUsageHistory
+            if ($history -and $history.Count -gt 0) {
+                $blocks.Add((Format-UsageHistoryReport $history) -join "`n")
+            }
+        } catch { }
+    }
+    if (Get-Command Get-UsageLedgerClipboardMath -ErrorAction SilentlyContinue) {
+        try {
+            $math = Get-UsageLedgerClipboardMath
+            if ($math -and $math.Providers -and $math.Providers.Count -gt 0) {
+                $blocks.Add((Format-UsageLedgerReport $math) -join "`n")
+            }
+        } catch { }
+    }
+    $text = if ($blocks.Count -gt 0) { $blocks -join "`n`n" } else { 'No usage history yet. Claude and Codex logs are rolled up on the next stats pass.' }
+    [System.Windows.Clipboard]::SetText($text)
 }

@@ -240,7 +240,8 @@ function Get-UnifiedExportLines {
         $CursorSummary,
         $CursorLocal,
         $GrokUsage,
-        $Sections
+        $Sections,
+        $LedgerMath
     )
 
     $header = 'AI Usage Overlay'
@@ -268,6 +269,12 @@ function Get-UnifiedExportLines {
     if (Test-ExportSectionIncluded $Sections 'grok') {
         foreach ($line in @(Get-GrokExportLines -Usage $GrokUsage)) {
             $lines.Add($line)
+        }
+    }
+    if ($LedgerMath -and (Get-Command Format-UsageLedgerReport -ErrorAction SilentlyContinue)) {
+        $lines.Add('')
+        foreach ($line in @(Format-UsageLedgerReport $LedgerMath)) {
+            $lines.Add([string]$line)
         }
     }
 

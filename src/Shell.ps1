@@ -24,8 +24,8 @@ $xaml = @'
   <Window.Resources>
     <LinearGradientBrush x:Key="Divider" StartPoint="0,0" EndPoint="1,0">
       <GradientStop Color="Transparent" Offset="0"/>
-      <GradientStop Color="#38BDF828" Offset="0.25"/>
-      <GradientStop Color="#C084FC28" Offset="0.75"/>
+      <GradientStop Color="#2838BDF8" Offset="0.25"/>
+      <GradientStop Color="#28C084FC" Offset="0.75"/>
       <GradientStop Color="Transparent" Offset="1"/>
     </LinearGradientBrush>
 
@@ -262,8 +262,8 @@ $xaml = @'
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
-            <!-- Fable metric -->
-            <StackPanel Margin="0,0,0,6">
+            <!-- Fable metric (collapsed unless the account has a Fable window) -->
+            <StackPanel x:Name="fabRow" Margin="0,0,0,6" Visibility="Collapsed">
               <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
@@ -410,7 +410,7 @@ $xaml = @'
                 <Polyline x:Name="weekSparkC" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
               </Canvas>
             </StackPanel>
-            <Grid Margin="0,0,0,7">
+            <Grid x:Name="fabRowC" Margin="0,0,0,7" Visibility="Collapsed">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
@@ -1223,7 +1223,7 @@ function Apply-UnifiedTheme([string]$name) {
         $l = $script:window.FindName($labels[$i])
         if ($l -and $t[$fgKeys[$i]]) { $l.Foreground = NewBrush $t[$fgKeys[$i]] }
         $s = $script:window.FindName($subs[$i])
-        if ($s -and $t[$fgKeys[$i]]) { $s.Foreground = NewBrush ($t[$fgKeys[$i]] + '55') }
+        if ($s -and $t[$fgKeys[$i]]) { $s.Foreground = NewBrush ('#55' + $t[$fgKeys[$i]].TrimStart('#')) }
     }
 
     # Cursor bar/label (per-theme CursorColors; the bar is repainted every refresh in
@@ -1249,7 +1249,7 @@ function Apply-UnifiedTheme([string]$name) {
         if ($gl) { $gl.Foreground = NewBrush $gfg }
     }
     $gs = $script:window.FindName('grokWeekSub')
-    if ($gs) { $gs.Foreground = NewBrush ($gfg + '55') }
+    if ($gs) { $gs.Foreground = NewBrush ('#55' + $gfg.TrimStart('#')) }
     foreach ($bn in @('reqBar','reqBarC')) {
         $rb = $script:window.FindName($bn)
         if ($rb) { $rb.Background = New-GradientBrush $cc[0] $cc[1] }
@@ -1551,9 +1551,16 @@ function Update-ClaudeSection {
     Set-Spark 'weekSparkC' 'weekSparkCanvasC' 'seven_day' 'weekSparkRowC'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
-    Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab -ResetOverride $resetOverride
-    Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization -AccentFg $script:AccentFab
-    if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
+    if ($d.seven_day_fable -and $null -ne $d.seven_day_fable.utilization) {
+        $script:window.FindName('fabRow').Visibility = [System.Windows.Visibility]::Visible
+        $fc = $script:window.FindName('fabRowC'); if ($fc) { $fc.Visibility = [System.Windows.Visibility]::Visible }
+        Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab -ResetOverride $resetOverride
+        Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization -AccentFg $script:AccentFab
+        if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
+    } else {
+        $script:window.FindName('fabRow').Visibility = [System.Windows.Visibility]::Collapsed
+        $fc = $script:window.FindName('fabRowC'); if ($fc) { $fc.Visibility = [System.Windows.Visibility]::Collapsed }
+    }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible

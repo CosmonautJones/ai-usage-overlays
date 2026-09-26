@@ -157,6 +157,37 @@ Describe 'Estimate-CodexCost' {
     }
 }
 
+Describe 'Estimate-CodexCost unknown-model warning' {
+    BeforeAll {
+        $script:CodexCostLog = [System.Collections.Generic.List[string]]::new()
+        function Write-Log { param([string]$Message) $script:CodexCostLog.Add($Message) }
+    }
+    BeforeEach { $script:CodexCostLog.Clear() }
+
+    # Measure-CodexStats prices every cached record, so a per-call warning
+    # wrote one line per record per poll and grew the log past 100 MB.
+    It 'warns once per unknown model however many records it prices' {
+        $records = foreach ($i in 1..5) {
+            @{ Model='mystery-model-a'; Date=[datetime]'2026-06-10'; In=100L; CachedIn=0L; Out=10L; SessionId="s$i" }
+        }
+        [void](Measure-CodexStats -records $records -today ([datetime]'2026-06-10'))
+        @($script:CodexCostLog | Where-Object { $_ -match "mystery-model-a" }).Count | Should -Be 1
+    }
+
+    It 'still warns separately for each distinct unknown model' {
+        $v = @{ inputTokens = 1; cachedInputTokens = 0; outputTokens = 0 }
+        foreach ($m in 'mystery-model-b', 'mystery-model-c', 'mystery-model-b') { [void](Estimate-CodexCost $m $v) }
+        @($script:CodexCostLog | Where-Object { $_ -match "mystery-model-b" }).Count | Should -Be 1
+        @($script:CodexCostLog | Where-Object { $_ -match "mystery-model-c" }).Count | Should -Be 1
+    }
+
+    It 'keeps pricing an unknown model at the default rate after the warning' {
+        $v = @{ inputTokens = 1000000; cachedInputTokens = 0; outputTokens = 0 }
+        Estimate-CodexCost 'mystery-model-d' $v | Should -Be 1.0
+        Estimate-CodexCost 'mystery-model-d' $v | Should -Be 1.0
+    }
+}
+
 Describe 'Get-CodexSessionDirCandidates' {
     It 'includes sessions directories from supplied WSL home roots' {
         $wslHome = '\\wsl.localhost\Ubuntu\home\alice'

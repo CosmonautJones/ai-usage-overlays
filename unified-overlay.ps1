@@ -191,6 +191,7 @@ function Invoke-OverlaySnapshot {
     . (Join-Path $script:AppDir 'src\Format.ps1')
     . (Join-Path $script:AppDir 'src\Pricing.ps1')
     . (Join-Path $script:AppDir 'src\History.ps1')
+    . (Join-Path $script:AppDir 'src\Metrics.ps1')
     . (Join-Path $script:AppDir 'src\Data.ps1')
     . (Join-Path $script:AppDir 'src\State.ps1')
     . (Join-Path $script:AppDir 'src\CodexData.ps1')
@@ -369,6 +370,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\Format.ps1')
 . (Join-Path $script:AppDir 'src\Pricing.ps1')
 . (Join-Path $script:AppDir 'src\History.ps1')
+. (Join-Path $script:AppDir 'src\Metrics.ps1')
 . (Join-Path $script:AppDir 'src\Data.ps1')
 . (Join-Path $script:AppDir 'src\State.ps1')
 . (Join-Path $script:AppDir 'src\CodexData.ps1')
@@ -471,6 +473,7 @@ $script:ClaudeStatsScript = {
 
     . (Join-Path $AppDir 'src\Config.ps1')
     . (Join-Path $AppDir 'src\Pricing.ps1')
+    . (Join-Path $AppDir 'src\Metrics.ps1')
     . (Join-Path $AppDir 'src\Data.ps1')
 
     Get-Stats
@@ -489,6 +492,7 @@ $script:CodexStatsScript = {
 
     . (Join-Path $AppDir 'src\Config.ps1')
     . (Join-Path $AppDir 'src\Pricing.ps1')
+    . (Join-Path $AppDir 'src\Metrics.ps1')
     . (Join-Path $AppDir 'src\Data.ps1')
     . (Join-Path $AppDir 'src\CodexData.ps1')
 
@@ -743,8 +747,14 @@ function Complete-RefreshJobs {
                         $script:CodexErrMsg = $r['CodexErrMsg']
                     }
                     'GrokUsage' {
-                        $script:GrokUsage = $r['GrokUsage']
-                        $script:GrokAuthState = $r['GrokAuthState']
+                        $incomingUsage = $r['GrokUsage']
+                        $incomingAuth = [string]$r['GrokAuthState']
+                        if (Get-Command Resolve-GrokUsageCarryForward -ErrorAction SilentlyContinue) {
+                            $script:GrokUsage = Resolve-GrokUsageCarryForward -Previous $script:GrokUsage -Incoming $incomingUsage -AuthState $incomingAuth
+                        } elseif ($incomingUsage -or $incomingAuth -in @('auth', 'notoken')) {
+                            $script:GrokUsage = $incomingUsage
+                        }
+                        $script:GrokAuthState = $incomingAuth
                         $script:GrokErrMsg = $r['GrokErrMsg']
                     }
                     default {
