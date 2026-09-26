@@ -406,6 +406,200 @@ function Get-GrokRemainingResets {
     }
 }
 
+function Set-GrokNoteValue {
+    param($Obj, [string]$Name, $Value)
+
+    if (-not $Obj -or -not $Name) { return }
+    if ($Obj -is [System.Collections.IDictionary]) { $Obj[$Name] = $Value; return }
+    if ($Obj.PSObject -and $Obj.PSObject.Properties[$Name]) { $Obj.$Name = $Value; return }
+    $Obj | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+}
+
+function Get-GrokPreferredOidcEntry {
+    param($Auth)
+
+    if (-not $Auth -or -not $Auth.PSObject) { return $null }
+
+    $fallback = $null
+    foreach ($prop in $Auth.PSObject.Properties) {
+        $val = $prop.Value
+        if ($null -eq $val -or $val -is [string] -or $val -is [ValueType]) { continue }
+        $mode = [string](Get-GrokNoteValue $val 'auth_mode')
+        if ($mode -eq 'api_key') { continue }
+        $refresh = Get-GrokNoteValue $val 'refresh_token'
+        $client = Get-GrokNoteValue $val 'oidc_client_id'
+        if (-not ($refresh -is [string]) -or -not $refresh) { continue }
+        if (-not ($client -is [string]) -or -not $client) { continue }
+        if ($prop.Name -like 'https://auth.x.ai::*') { return $val }
+        if (-not $fallback) { $fallback = $val }
+    }
+    return $fallback
+}
+
+# Grok treats a token as due 5 minutes early so a poll does not die mid-request.
+function Test-GrokTokenNearExpiry {
+    param($Entry, [int]$SkewSeconds = 300)
+
+    $raw = Get-GrokNoteValue $Entry 'expires_at'
+    if (-not $raw) { return $false }
+    try {
+        $exp = [datetimeoffset]::Parse([string]$raw)
+        return (($exp - [datetimeoffset]::UtcNow).TotalSeconds -le $SkewSeconds)
+    } catch {
+        return $false
+    }
+}
+
+function ConvertFrom-GrokRefreshResponse {
+    param(
+        $Response,
+        [string]$PreviousRefresh,
+        [datetimeoffset]$Now = [datetimeoffset]::UtcNow
+    )
+
+    $access = Get-GrokNoteValue $Response 'access_token'
+    if (-not ($access -is [string]) -or -not $access) { throw 'Token response missing access_token' }
+
+    $refresh = Get-GrokNoteValue $Response 'refresh_token'
+    if (-not ($refresh -is [string]) -or -not $refresh) { $refresh = $PreviousRefresh }
+    if (-not $refresh) { throw 'Token response missing refresh_token' }
+
+    $seconds = 21600
+    $expiresIn = Get-GrokNoteValue $Response 'expires_in'
+    if ($null -ne $expiresIn) {
+        try { $seconds = [int]$expiresIn } catch { $seconds = 21600 }
+    }
+    if ($seconds -lt 60) { $seconds = 60 }
+
+    return @{
+        AccessToken  = $access
+        RefreshToken = $refresh
+        ExpiresAt    = $Now.ToUniversalTime().AddSeconds($seconds).ToString('o')
+        CreateTime   = $Now.ToUniversalTime().ToString('o')
+    }
+}
+
+function Write-GrokAuthAtomic {
+    param(
+        [string]$Path,
+        $Auth
+    )
+
+    $json = $Auth | ConvertTo-Json -Depth 8
+    $tmp = "$Path.tmp"
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($tmp, $json, $utf8)
+    if ([System.IO.File]::Exists($Path)) {
+        $backup = "$Path.bak"
+        [System.IO.File]::Replace($tmp, $Path, $backup)
+        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+    } else {
+        [System.IO.File]::Move($tmp, $Path)
+    }
+}
+
+function Invoke-GrokAuthExclusive {
+    param(
+        [string]$AuthPath,
+        [scriptblock]$Action,
+        [object[]]$ArgumentList = @()
+    )
+
+    $lockPath = "$AuthPath.lock"
+    $stream = $null
+    $deadline = [datetime]::UtcNow.AddSeconds(15)
+    while (-not $stream) {
+        try {
+            $stream = [System.IO.File]::Open(
+                $lockPath,
+                [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite,
+                [System.IO.FileShare]::None)
+        } catch {
+            if ([datetime]::UtcNow -ge $deadline) { throw }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+    try {
+        & $Action @ArgumentList
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+function Invoke-GrokTokenRefresh {
+    param(
+        $Entry,
+        [int]$TimeoutSec = 15
+    )
+
+    $client = [string](Get-GrokNoteValue $Entry 'oidc_client_id')
+    $refresh = [string](Get-GrokNoteValue $Entry 'refresh_token')
+    $issuer = [string](Get-GrokNoteValue $Entry 'oidc_issuer')
+    if (-not $issuer) { $issuer = 'https://auth.x.ai' }
+    if ($issuer -notmatch '^https://') { throw 'Unsupported Grok issuer' }
+    if (-not $client -or -not $refresh) { throw 'Grok session cannot refresh' }
+
+    $body = 'grant_type=refresh_token&client_id=' + [uri]::EscapeDataString($client) + '&refresh_token=' + [uri]::EscapeDataString($refresh)
+    $uri = ($issuer.TrimEnd('/')) + '/oauth2/token'
+    $resp = Invoke-RestMethod -Uri $uri -Method POST -ContentType 'application/x-www-form-urlencoded' -Body $body -TimeoutSec ([math]::Min(30, [math]::Max(1, $TimeoutSec)))
+    return ConvertFrom-GrokRefreshResponse -Response $resp -PreviousRefresh $refresh
+}
+
+function Update-GrokStoredSession {
+    param(
+        [string]$AuthPath,
+        [int]$TimeoutSec = 15,
+        [switch]$Force
+    )
+
+    Invoke-GrokAuthExclusive -AuthPath $AuthPath -ArgumentList @($AuthPath, $TimeoutSec, [bool]$Force) -Action {
+        param([string]$Path, [int]$Timeout, [bool]$ForceRefresh)
+
+        $auth = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        $entry = Get-GrokPreferredOidcEntry $auth
+        $current = Get-GrokAccessToken $auth
+        $due = $entry -and (Test-GrokTokenNearExpiry $entry)
+        if ($current -and -not $ForceRefresh -and -not $due) { return $current }
+        if (-not $entry) { return $current }
+
+        $info = Invoke-GrokTokenRefresh -Entry $entry -TimeoutSec $Timeout
+        Set-GrokNoteValue $entry 'key' $info.AccessToken
+        Set-GrokNoteValue $entry 'refresh_token' $info.RefreshToken
+        Set-GrokNoteValue $entry 'expires_at' $info.ExpiresAt
+        Set-GrokNoteValue $entry 'create_time' $info.CreateTime
+        Write-GrokAuthAtomic -Path $Path -Auth $auth
+        return $info.AccessToken
+    }
+}
+
+# A stale poll must not wipe the countdown already on screen. A logged-out
+# session must not keep showing yesterday's quota.
+function Resolve-GrokUsageCarryForward {
+    param($Previous, $Incoming, [string]$AuthState)
+
+    if ($Incoming) { return $Incoming }
+    if ($AuthState -in @('auth', 'notoken')) { return $null }
+    return $Previous
+}
+
+function Get-GrokBillingDocument {
+    param(
+        [string]$Token,
+        [int]$TimeoutSec
+    )
+
+    $headers = @{
+        'Authorization'    = "Bearer $Token"
+        'x-xai-token-auth' = 'xai-grok-cli'
+        'Accept'           = 'application/json'
+        'User-Agent'       = 'grok-cli (ai-usage-overlay)'
+    }
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    return Invoke-RestMethod -Uri 'https://cli-chat-proxy.grok.com/v1/billing?format=credits' `
+        -Headers $headers -Method GET -TimeoutSec $TimeoutSec
+}
+
 function Get-GrokLiveUsage {
     param(
         [int]$TimeoutSec = 15,
@@ -429,40 +623,70 @@ function Get-GrokLiveUsage {
         return $null
     }
 
-    $token = Get-GrokAccessToken $auth
+    $canRefresh = [bool](Get-GrokPreferredOidcEntry $auth)
+    $existing = Get-GrokAccessToken $auth
+    $token = $null
+    try {
+        $token = Update-GrokStoredSession -AuthPath $path -TimeoutSec $TimeoutSec
+    } catch {
+        Write-GrokLog 'Get-GrokLiveUsage: token refresh failed'
+        if ($existing) {
+            $token = $existing
+        } else {
+            Set-GrokAuthState 'auth' 'Grok login expired - run grok login'
+            return $null
+        }
+    }
     if (-not $token) {
         Set-GrokAuthState 'notoken' 'run grok login'
         return $null
     }
 
-    $headers = @{
-        'Authorization'     = "Bearer $token"
-        'x-xai-token-auth'  = 'xai-grok-cli'
-        'Accept'            = 'application/json'
-        'User-Agent'        = 'grok-cli (ai-usage-overlay)'
+    $resp = $null
+    $fetched = $false
+    for ($attempt = 0; $attempt -lt 2 -and -not $fetched; $attempt++) {
+        try {
+            $resp = Get-GrokBillingDocument -Token $token -TimeoutSec $TimeoutSec
+            $fetched = $true
+        } catch {
+            $message = $_.Exception.Message
+            $code = $null
+            if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
+            $unauthorized = ($code -eq 401) -or ($message -match '\b401\b')
+            if ($unauthorized -and $attempt -eq 0 -and $canRefresh) {
+                try {
+                    $token = Update-GrokStoredSession -AuthPath $path -TimeoutSec $TimeoutSec -Force
+                } catch {
+                    Write-GrokLog 'Get-GrokLiveUsage: token refresh failed'
+                    Set-GrokAuthState 'auth' 'Grok login expired - run grok login'
+                    return $null
+                }
+                if (-not $token) {
+                    Set-GrokAuthState 'auth' 'Grok login expired - run grok login'
+                    return $null
+                }
+                continue
+            }
+            Write-GrokLog "Get-GrokLiveUsage: request failed (HTTP $code)"
+            if ($unauthorized) {
+                Set-GrokAuthState 'auth' 'Grok login expired - run grok login'
+            } else {
+                Set-GrokAuthState 'stale' 'Grok usage unavailable; retry later'
+            }
+            return $null
+        }
     }
 
-    try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $resp = Invoke-RestMethod -Uri 'https://cli-chat-proxy.grok.com/v1/billing?format=credits' `
-            -Headers $headers -Method GET -TimeoutSec $TimeoutSec
-        if (-not $resp -or -not $resp.config) { throw 'Unrecognized Grok billing response' }
-        Set-GrokAuthState 'ok' ''
-        $parsed = ConvertFrom-GrokBillingResponse $resp
-        $resetInfo = Get-GrokRemainingResets -Token $token -TimeoutSec $TimeoutSec
-        foreach ($key in $resetInfo.Keys) { $parsed[$key] = $resetInfo[$key] }
-        $script:GrokUsage = $parsed
-        return $parsed
-    } catch {
-        $message = $_.Exception.Message
-        $code = $null
-        if ($_.Exception.Response) { try { $code = [int]$_.Exception.Response.StatusCode } catch { } }
-        Write-GrokLog "Get-GrokLiveUsage: request failed (HTTP $code)"
-        if ($code -eq 401 -or $message -match '\b401\b') {
-            Set-GrokAuthState 'auth' 'Grok login expired - run grok login'
-        } else {
-            Set-GrokAuthState 'stale' 'Grok usage unavailable; retry later'
-        }
+    if (-not $resp -or -not $resp.config) {
+        Write-GrokLog 'Get-GrokLiveUsage: unrecognized billing response'
+        Set-GrokAuthState 'stale' 'Grok usage unavailable; retry later'
         return $null
     }
+
+    Set-GrokAuthState 'ok' ''
+    $parsed = ConvertFrom-GrokBillingResponse $resp
+    $resetInfo = Get-GrokRemainingResets -Token $token -TimeoutSec $TimeoutSec
+    foreach ($key in $resetInfo.Keys) { $parsed[$key] = $resetInfo[$key] }
+    $script:GrokUsage = $parsed
+    return $parsed
 }

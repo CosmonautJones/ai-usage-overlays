@@ -743,8 +743,14 @@ function Complete-RefreshJobs {
                         $script:CodexErrMsg = $r['CodexErrMsg']
                     }
                     'GrokUsage' {
-                        $script:GrokUsage = $r['GrokUsage']
-                        $script:GrokAuthState = $r['GrokAuthState']
+                        $incomingUsage = $r['GrokUsage']
+                        $incomingAuth = [string]$r['GrokAuthState']
+                        if (Get-Command Resolve-GrokUsageCarryForward -ErrorAction SilentlyContinue) {
+                            $script:GrokUsage = Resolve-GrokUsageCarryForward -Previous $script:GrokUsage -Incoming $incomingUsage -AuthState $incomingAuth
+                        } elseif ($incomingUsage -or $incomingAuth -in @('auth', 'notoken')) {
+                            $script:GrokUsage = $incomingUsage
+                        }
+                        $script:GrokAuthState = $incomingAuth
                         $script:GrokErrMsg = $r['GrokErrMsg']
                     }
                     default {
