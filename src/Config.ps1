@@ -198,6 +198,8 @@ $script:Prices = @{
 $script:CodexPricesAsOf = '2026-06-26'
 $script:CodexPrices = @{
     'gpt-5.5' = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
+    # developers.openai.com/api/docs/models/gpt-6-astra, checked 2026-09-21
+    'gpt-6-astra' = @{ in = 10.00; cachedIn = 1.00; out = 50.00 }
     default   = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
 }
 

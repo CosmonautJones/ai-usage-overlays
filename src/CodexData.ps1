@@ -62,6 +62,7 @@ if (-not $script:CodexSessionsDir) {
 
 $script:CodexStats = $null
 $script:CodexStatsFileCache = @{}
+$script:CodexUnknownModelsLogged = [System.Collections.Generic.HashSet[string]]::new()
 
 # Mirrors Cursor's contract (see Test-ProviderAuthFailed in Config.ps1) so both
 # providers report auth trouble the same way instead of failing silently.
@@ -536,9 +537,13 @@ function Estimate-CodexCost([string]$model, $v) {
         } else {
             $tier = 'gpt-5.5'
         }
+    } elseif ($script:CodexPrices.ContainsKey($model)) {
+        $tier = $model
     } else {
         $tier = 'default'
-        if ($model -and (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
+        # Once per model per poll: this runs for every cached record.
+        if ($model -and $script:CodexUnknownModelsLogged.Add($model) -and
+            (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
             Write-Log "Unknown Codex model '$model' - falling back to default pricing (verify prices)"
         }
     }
