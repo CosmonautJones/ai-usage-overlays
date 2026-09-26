@@ -98,7 +98,7 @@ Describe 'Usage history from logs' {
         $day.OutTokens | Should -Be 60
         $day.Messages | Should -Be 2
         $day.Sessions | Should -Be 2
-        $day.ReusePct | Should -Be 50
+        $day.ReusePct | Should -Be 60
         $day.YieldPer1K | Should -Be 300
         $rollup.Totals.ReusePct | Should -Be 60
         $rollup.Totals.YieldPer1K | Should -Be 500

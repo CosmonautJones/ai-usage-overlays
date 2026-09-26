@@ -950,6 +950,13 @@ function Get-CodexStats {
     try {
         if ($sessionDirs.Count -gt 0) {
             $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
+            if (Get-Command Save-UsageDayHistory -ErrorAction SilentlyContinue) {
+                try {
+                    Save-UsageDayHistory -Rollup (Get-UsageDayRollup -Records $allRecords.ToArray() -Provider 'codex')
+                } catch {
+                    Write-CodexLog "Get-CodexStats: usage history save failed - $($_.Exception.Message)"
+                }
+            }
         }
     } catch {
         Write-CodexLog "Get-CodexStats: Measure-CodexStats failed - $($_.Exception.Message)"

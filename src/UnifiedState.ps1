@@ -450,14 +450,23 @@ function Copy-Stats {
 }
 
 function Copy-UsageLedger {
-    $text = 'Usage ledger has no samples yet. It fills as the overlay polls.'
+    $blocks = [System.Collections.Generic.List[string]]::new()
+    if (Get-Command Get-StoredUsageHistory -ErrorAction SilentlyContinue) {
+        try {
+            $history = Get-StoredUsageHistory
+            if ($history -and $history.Count -gt 0) {
+                $blocks.Add((Format-UsageHistoryReport $history) -join "`n")
+            }
+        } catch { }
+    }
     if (Get-Command Get-UsageLedgerClipboardMath -ErrorAction SilentlyContinue) {
         try {
             $math = Get-UsageLedgerClipboardMath
-            if ($math) { $text = (Format-UsageLedgerReport $math) -join "`n" }
-        } catch {
-            $text = 'Usage ledger could not be read.'
-        }
+            if ($math -and $math.Providers -and $math.Providers.Count -gt 0) {
+                $blocks.Add((Format-UsageLedgerReport $math) -join "`n")
+            }
+        } catch { }
     }
+    $text = if ($blocks.Count -gt 0) { $blocks -join "`n`n" } else { 'No usage history yet. Claude and Codex logs are rolled up on the next stats pass.' }
     [System.Windows.Clipboard]::SetText($text)
 }

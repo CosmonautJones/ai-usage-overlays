@@ -978,6 +978,13 @@ function Get-Stats {
 
     try {
         $script:Stats = Measure-Stats $allRecords.ToArray() (Get-Date)
+        if (Get-Command Save-UsageDayHistory -ErrorAction SilentlyContinue) {
+            try {
+                Save-UsageDayHistory -Rollup (Get-UsageDayRollup -Records $allRecords.ToArray() -Provider 'claude')
+            } catch {
+                Write-Log "Get-Stats: usage history save failed - $($_.Exception.Message)"
+            }
+        }
     } catch {
         Write-Log "Get-Stats: Measure-Stats failed - $($_.Exception.Message)"
     }
