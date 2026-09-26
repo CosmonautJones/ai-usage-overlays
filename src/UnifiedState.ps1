@@ -430,6 +430,11 @@ function Copy-Stats {
         $usage = $script:State.Data
     }
 
+    $ledger = $null
+    if (Get-Command Get-UsageLedgerClipboardMath -ErrorAction SilentlyContinue) {
+        try { $ledger = Get-UsageLedgerClipboardMath } catch { $ledger = $null }
+    }
+
     $lines = Get-UnifiedExportLines `
         -ClaudeIdentity $script:ClaudeIdentity `
         -ClaudeUsage $usage `
@@ -438,7 +443,21 @@ function Copy-Stats {
         -CursorSummary $script:SummaryData `
         -CursorLocal $script:LocalData `
         -GrokUsage $script:GrokUsage `
-        -Sections $sections
+        -Sections $sections `
+        -LedgerMath $ledger
 
     [System.Windows.Clipboard]::SetText(($lines -join "`n"))
+}
+
+function Copy-UsageLedger {
+    $text = 'Usage ledger has no samples yet. It fills as the overlay polls.'
+    if (Get-Command Get-UsageLedgerClipboardMath -ErrorAction SilentlyContinue) {
+        try {
+            $math = Get-UsageLedgerClipboardMath
+            if ($math) { $text = (Format-UsageLedgerReport $math) -join "`n" }
+        } catch {
+            $text = 'Usage ledger could not be read.'
+        }
+    }
+    [System.Windows.Clipboard]::SetText($text)
 }

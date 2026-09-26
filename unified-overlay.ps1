@@ -369,6 +369,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\Format.ps1')
 . (Join-Path $script:AppDir 'src\Pricing.ps1')
 . (Join-Path $script:AppDir 'src\History.ps1')
+. (Join-Path $script:AppDir 'src\Metrics.ps1')
 . (Join-Path $script:AppDir 'src\Data.ps1')
 . (Join-Path $script:AppDir 'src\State.ps1')
 . (Join-Path $script:AppDir 'src\CodexData.ps1')
