@@ -27,6 +27,8 @@ function New-ExpandedWindow {
         $c = $w.FindName($s + 'Compact')
         if ($c) { $c.Visibility = [System.Windows.Visibility]::Collapsed }
     }
+    # Fable collapses without data; measure the account that has it.
+    $w.FindName('fabRow').Visibility = [System.Windows.Visibility]::Visible
     if ($WithOpus) { $w.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible }
     if ($WithSparklines) {
         foreach ($n in 'fivehSparkRow', 'weekSparkRow', 'codexFivehSparkRow',
