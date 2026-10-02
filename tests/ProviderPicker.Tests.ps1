@@ -100,6 +100,71 @@ Describe 'Persisted settings round-trip' {
     }
 }
 
+Describe 'New-ProviderPickerForm layout' {
+    BeforeAll {
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -AssemblyName System.Drawing
+
+        function Get-LeafControls($parent) {
+            foreach ($c in $parent.Controls) {
+                if ($c -is [System.Windows.Forms.TableLayoutPanel] -or $c -is [System.Windows.Forms.FlowLayoutPanel]) {
+                    Get-LeafControls $c
+                } else { $c }
+            }
+        }
+
+        function Get-FormRect($form, $c) {
+            $p = $form.PointToClient($c.Parent.PointToScreen($c.Location))
+            New-Object System.Drawing.Rectangle($p, $c.Size)
+        }
+    }
+
+    # 10pt is 100% scaling; 20pt approximates a 200% display where fonts grow but fixed pixels do not.
+    It 'fits every control without clipping or overlap at <Pt>pt' -TestCases @(
+        @{ Pt = 10 }, @{ Pt = 15 }, @{ Pt = 20 }
+    ) {
+        param($Pt)
+        $picker = New-ProviderPickerForm -Initial (Get-DefaultUnifiedSections) -FontSize $Pt
+        $form = $picker.Form
+        try {
+            $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+            $form.Location = New-Object System.Drawing.Point(-32000, -32000)
+            $form.Show()
+            $form.PerformLayout()
+
+            $leaves = @(Get-LeafControls $form)
+            $leaves.Count | Should -Be 7
+            $client = New-Object System.Drawing.Rectangle([System.Drawing.Point]::Empty, $form.ClientSize)
+            $rects = @()
+            foreach ($c in $leaves) {
+                $r = Get-FormRect $form $c
+                $client.Contains($r) | Should -BeTrue -Because "$($c.Text) must sit inside the dialog"
+                $c.Width | Should -BeGreaterOrEqual $c.PreferredSize.Width -Because "$($c.Text) must not be truncated"
+                $c.Height | Should -BeGreaterOrEqual $c.PreferredSize.Height -Because "$($c.Text) must not be clipped vertically"
+                $rects += ,@($c.Text, $r)
+            }
+            for ($i = 0; $i -lt $rects.Count; $i++) {
+                for ($j = $i + 1; $j -lt $rects.Count; $j++) {
+                    $rects[$i][1].IntersectsWith($rects[$j][1]) | Should -BeFalse -Because "$($rects[$i][0]) overlaps $($rects[$j][0])"
+                }
+            }
+        } finally {
+            $form.Close()
+            $form.Dispose()
+        }
+    }
+
+    It 'seeds checkboxes from the initial map' {
+        $picker = New-ProviderPickerForm -Initial @{ claude = $true; codex = $false; cursor = $true; grok = $false }
+        try {
+            $picker.Checks.claude.Checked | Should -BeTrue
+            $picker.Checks.codex.Checked | Should -BeFalse
+            $picker.Checks.cursor.Checked | Should -BeTrue
+            $picker.Checks.grok.Checked | Should -BeFalse
+        } finally { $picker.Form.Dispose() }
+    }
+}
+
 Describe 'Picker wiring' {
     BeforeAll {
         $root = Split-Path $PSScriptRoot -Parent

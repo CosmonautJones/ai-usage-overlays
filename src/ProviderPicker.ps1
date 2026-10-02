@@ -46,11 +46,14 @@ function Apply-ProviderSections {
     }
 }
 
-function Show-ProviderPickerDialog {
-    param($Initial = $null)
+function New-ProviderPickerForm {
+    # Layout is driven entirely by AutoSize panels so the dialog fits at any DPI / font size.
+    param($Initial = $null, [double]$FontSize = 10)
 
     $map = if (Get-Command ConvertTo-UnifiedSectionsMap -ErrorAction SilentlyContinue) {
         ConvertTo-UnifiedSectionsMap $(if ($null -ne $Initial) { $Initial } else { Get-DefaultUnifiedSections })
+    } elseif ($null -ne $Initial) {
+        $Initial
     } else {
         Get-DefaultUnifiedSections
     }
@@ -62,27 +65,44 @@ function Show-ProviderPickerDialog {
     $form.MaximizeBox = $false
     $form.MinimizeBox = $false
     $form.ShowInTaskbar = $true
-    $form.ClientSize = New-Object System.Drawing.Size(340, 280)
+    $form.AutoSize = $true
+    $form.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
     $form.BackColor = [System.Drawing.Color]::FromArgb(15, 23, 42)
     $form.ForeColor = [System.Drawing.Color]::FromArgb(226, 232, 240)
-    $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $form.Font = New-Object System.Drawing.Font('Segoe UI', $FontSize)
+    $em = $form.Font.Height
+    $form.Padding = New-Object System.Windows.Forms.Padding([int]($em * 1.2), [int]($em * 0.9), [int]($em * 1.2), [int]($em * 0.9))
+
+    $root = New-Object System.Windows.Forms.TableLayoutPanel
+    $root.AutoSize = $true
+    $root.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+    $root.ColumnCount = 1
+    $root.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $root.BackColor = $form.BackColor
 
     $title = New-Object System.Windows.Forms.Label
     $title.Text = 'Which providers do you use?'
     $title.AutoSize = $true
-    $title.Location = New-Object System.Drawing.Point(20, 16)
     $title.ForeColor = [System.Drawing.Color]::FromArgb(241, 245, 249)
-    $title.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
+    $title.Font = New-Object System.Drawing.Font('Segoe UI Semibold', ($FontSize * 1.1))
+    $title.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, [int]($em * 0.3))
 
     $hint = New-Object System.Windows.Forms.Label
     $hint.Text = 'Hidden tiles stay quiet. Change anytime from the tray > Providers.'
-    $hint.AutoSize = $false
-    $hint.Size = New-Object System.Drawing.Size(300, 36)
-    $hint.Location = New-Object System.Drawing.Point(20, 44)
+    $hint.AutoSize = $true
+    # Wrap the hint to the title's width so the dialog stays compact at any scale.
+    $hint.MaximumSize = New-Object System.Drawing.Size([Math]::Max($title.PreferredSize.Width, [int]($em * 14)), 0)
     $hint.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
+    $hint.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, [int]($em * 0.6))
+
+    $list = New-Object System.Windows.Forms.FlowLayoutPanel
+    $list.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
+    $list.WrapContents = $false
+    $list.AutoSize = $true
+    $list.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+    $list.Margin = New-Object System.Windows.Forms.Padding([int]($em * 0.4), 0, 0, [int]($em * 0.6))
 
     $checks = @{}
-    $y = 92
     foreach ($pair in @(
         @('codex', 'Codex'),
         @('cursor', 'Cursor'),
@@ -94,27 +114,40 @@ function Show-ProviderPickerDialog {
         $cb.Text = $pair[1]
         $cb.Checked = [bool]$map[$key]
         $cb.AutoSize = $true
-        $cb.Location = New-Object System.Drawing.Point(28, $y)
         $cb.ForeColor = $form.ForeColor
         $cb.BackColor = $form.BackColor
+        $cb.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, [int]($em * 0.25))
         $checks[$key] = $cb
-        [void]$form.Controls.Add($cb)
-        $y += 28
+        [void]$list.Controls.Add($cb)
     }
 
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Continue'
     $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $ok.Location = New-Object System.Drawing.Point(110, 220)
-    $ok.Size = New-Object System.Drawing.Size(120, 30)
+    $ok.AutoSize = $true
+    $ok.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+    $ok.Padding = New-Object System.Windows.Forms.Padding([int]($em * 0.9), [int]($em * 0.2), [int]($em * 0.9), [int]($em * 0.2))
+    $ok.Anchor = [System.Windows.Forms.AnchorStyles]::None
     $ok.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $ok.BackColor = [System.Drawing.Color]::FromArgb(30, 58, 95)
     $ok.ForeColor = $form.ForeColor
 
-    [void]$form.Controls.Add($title)
-    [void]$form.Controls.Add($hint)
-    [void]$form.Controls.Add($ok)
+    [void]$root.Controls.Add($title)
+    [void]$root.Controls.Add($hint)
+    [void]$root.Controls.Add($list)
+    [void]$root.Controls.Add($ok)
+    [void]$form.Controls.Add($root)
     $form.AcceptButton = $ok
+
+    return @{ Form = $form; Checks = $checks }
+}
+
+function Show-ProviderPickerDialog {
+    param($Initial = $null)
+
+    $picker = New-ProviderPickerForm -Initial $Initial
+    $form = $picker.Form
+    $checks = $picker.Checks
 
     $result = $form.ShowDialog()
     $form.Dispose()

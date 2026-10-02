@@ -157,6 +157,37 @@ Describe 'Estimate-CodexCost' {
     }
 }
 
+Describe 'Estimate-CodexCost unknown-model warning' {
+    BeforeAll {
+        $script:CodexCostLog = [System.Collections.Generic.List[string]]::new()
+        function Write-Log { param([string]$Message) $script:CodexCostLog.Add($Message) }
+    }
+    BeforeEach { $script:CodexCostLog.Clear() }
+
+    # Measure-CodexStats prices every cached record, so a per-call warning
+    # wrote one line per record per poll and grew the log past 100 MB.
+    It 'warns once per unknown model however many records it prices' {
+        $records = foreach ($i in 1..5) {
+            @{ Model='mystery-model-a'; Date=[datetime]'2026-06-10'; In=100L; CachedIn=0L; Out=10L; SessionId="s$i" }
+        }
+        [void](Measure-CodexStats -records $records -today ([datetime]'2026-06-10'))
+        @($script:CodexCostLog | Where-Object { $_ -match "mystery-model-a" }).Count | Should -Be 1
+    }
+
+    It 'still warns separately for each distinct unknown model' {
+        $v = @{ inputTokens = 1; cachedInputTokens = 0; outputTokens = 0 }
+        foreach ($m in 'mystery-model-b', 'mystery-model-c', 'mystery-model-b') { [void](Estimate-CodexCost $m $v) }
+        @($script:CodexCostLog | Where-Object { $_ -match "mystery-model-b" }).Count | Should -Be 1
+        @($script:CodexCostLog | Where-Object { $_ -match "mystery-model-c" }).Count | Should -Be 1
+    }
+
+    It 'keeps pricing an unknown model at the default rate after the warning' {
+        $v = @{ inputTokens = 1000000; cachedInputTokens = 0; outputTokens = 0 }
+        Estimate-CodexCost 'mystery-model-d' $v | Should -Be 1.0
+        Estimate-CodexCost 'mystery-model-d' $v | Should -Be 1.0
+    }
+}
+
 Describe 'Get-CodexSessionDirCandidates' {
     It 'includes sessions directories from supplied WSL home roots' {
         $wslHome = '\\wsl.localhost\Ubuntu\home\alice'
@@ -459,5 +490,72 @@ Describe 'ConvertFrom-CodexUsageResponse' {
 
     It 'returns null for an empty response' {
         ConvertFrom-CodexUsageResponse $null | Should -BeNullOrEmpty
+    }
+
+    It 'parses the Pro usage-credit balance string from wham/usage' {
+        $obj = [pscustomobject]@{
+            plan_type = 'pro'
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{
+                    used_percent = 100
+                    limit_window_seconds = 604800
+                    reset_at = 1784488309
+                }
+            }
+            credits = [pscustomobject]@{
+                has_credits = $true
+                unlimited = $false
+                balance = '61902.7572305000'
+            }
+            rate_limit_reset_credits = [pscustomobject]@{ available_count = 1 }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        [math]::Abs($u.CreditBalance - 61902.7572305) | Should -BeLessThan 0.001
+        $u.CreditsUnlimited | Should -BeFalse
+        [math]::Round([double]$u.CreditBalance, 0, [MidpointRounding]::AwayFromZero) | Should -Be 61903
+        $u.ResetsAvailable | Should -Be 1
+    }
+
+    It 'leaves the credit balance empty when ChatGPT omits it' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ has_credits = $false; unlimited = $false; balance = $null }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1784488309 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $null -eq $u.CreditBalance | Should -BeTrue
+        $u.CreditsUnlimited | Should -BeFalse
+    }
+
+    It 'keeps a numeric balance and the unlimited flag' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ unlimited = $true; balance = 0 }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.CreditBalance | Should -Be 0
+        $u.CreditsUnlimited | Should -BeTrue
+    }
+
+    It 'ignores a credit balance that is not a number' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ balance = 'not-a-balance'; unlimited = $false }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $null -eq $u.CreditBalance | Should -BeTrue
     }
 }

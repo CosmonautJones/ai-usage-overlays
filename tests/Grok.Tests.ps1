@@ -232,3 +232,195 @@ Describe 'Format-GrokProductUsage' {
     }
 }
 
+Describe 'Grok OIDC refresh' {
+    BeforeEach {
+        Mock Get-GrokRemainingResets { @{ ResetsAvailable = 0; ResetStatus = 'ok'; ResetExpiresAt = $null } }
+        $script:GrokAuthState = 'init'
+        $script:GrokErrMsg    = ''
+        $script:GrokUsage     = $null
+        $script:sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("grok-refresh-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:sandbox -Force | Out-Null
+        $script:tokenCalls = 0
+        $script:billingAuth = $null
+    }
+
+    AfterEach {
+        Remove-Item -LiteralPath $script:sandbox -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'turns a refresh response into a stored access token without inventing a new refresh token' {
+        $now = [datetimeoffset]::Parse('2026-09-25T20:00:00Z')
+        $parsed = ConvertFrom-GrokRefreshResponse -Response ([pscustomobject]@{
+            access_token = 'fresh-access'
+            expires_in   = 3600
+        }) -PreviousRefresh 'keep-refresh' -Now $now
+
+        $parsed.AccessToken | Should -Be 'fresh-access'
+        $parsed.RefreshToken | Should -Be 'keep-refresh'
+        ([datetimeoffset]::Parse($parsed.ExpiresAt)) | Should -Be $now.AddSeconds(3600)
+    }
+
+    It 'refreshes an expired session and keeps the weekly reset time' {
+        $path = Join-Path $script:sandbox 'auth.json'
+        $periodEnd = [datetimeoffset]::UtcNow.AddHours(60)
+        @{
+            'https://auth.x.ai::test-client' = @{
+                key            = 'expired-key'
+                refresh_token  = 'refresh-value'
+                expires_at     = ([datetimeoffset]::UtcNow.AddHours(-1)).ToString('o')
+                auth_mode      = 'oidc'
+                oidc_issuer    = 'https://auth.x.ai'
+                oidc_client_id = 'test-client'
+                email          = 'keep-me@example.com'
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding utf8
+
+        Mock Invoke-RestMethod {
+            $uriText = [string]$Uri
+            if ($uriText -match '/oauth2/token$') {
+                $script:tokenCalls++
+                $bodyText = [string]$Body
+                if ($bodyText -notmatch 'grant_type=refresh_token') { throw 'missing grant' }
+                if ($bodyText -notmatch 'client_id=test-client') { throw 'missing client' }
+                if ($bodyText -notmatch 'refresh_token=refresh-value') { throw 'missing refresh' }
+                return [pscustomobject]@{ access_token = 'fresh-access'; expires_in = 21600 }
+            }
+            if ($uriText -match '/v1/billing') {
+                $script:billingAuth = [string]$Headers['Authorization']
+                return [pscustomobject]@{
+                    config = [pscustomobject]@{
+                        creditUsagePercent = 21
+                        currentPeriod = [pscustomobject]@{ end = $periodEnd.ToString('o') }
+                    }
+                }
+            }
+            throw "unexpected uri $uriText"
+        }
+
+        $usage = Get-GrokLiveUsage -AuthPath $path -TimeoutSec 5
+        $usage.WeekPct | Should -Be 21
+        $usage.WeekResetsAt | Should -Not -BeNullOrEmpty
+        . (Join-Path $script:root 'src\Format.ps1')
+        Format-Reset $usage.WeekResetsAt | Should -Match ([regex]::Escape([string][char]0x21BA) + ' \d+d \d+h')
+        $script:tokenCalls | Should -Be 1
+        $script:billingAuth | Should -Be 'Bearer fresh-access'
+        $script:GrokAuthState | Should -Be 'ok'
+        $script:GrokErrMsg | Should -Not -Match 'expired-key|fresh-access|refresh-value'
+
+        $saved = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $slot = $saved.'https://auth.x.ai::test-client'
+        $slot.key | Should -Be 'fresh-access'
+        $slot.refresh_token | Should -Be 'refresh-value'
+        $slot.email | Should -Be 'keep-me@example.com'
+        ([datetimeoffset]::Parse([string]$slot.expires_at)) | Should -BeGreaterThan ([datetimeoffset]::UtcNow.AddHours(4))
+    }
+
+    It 'refreshes a token inside the early-expiry window before billing' {
+        $path = Join-Path $script:sandbox 'auth.json'
+        @{
+            'https://auth.x.ai::test-client' = @{
+                key            = 'about-to-expire'
+                refresh_token  = 'refresh-value'
+                expires_at     = ([datetimeoffset]::UtcNow.AddSeconds(120)).ToString('o')
+                auth_mode      = 'oidc'
+                oidc_issuer    = 'https://auth.x.ai'
+                oidc_client_id = 'test-client'
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding utf8
+
+        Mock Invoke-RestMethod {
+            $uriText = [string]$Uri
+            if ($uriText -match '/oauth2/token$') {
+                $script:tokenCalls++
+                return [pscustomobject]@{ access_token = 'fresh-access'; refresh_token = 'rotated-refresh'; expires_in = 21600 }
+            }
+            return [pscustomobject]@{ config = [pscustomobject]@{ creditUsagePercent = 4; currentPeriod = [pscustomobject]@{ end = ([datetimeoffset]::UtcNow.AddDays(3)).ToString('o') } } }
+        }
+
+        $usage = Get-GrokLiveUsage -AuthPath $path -TimeoutSec 5
+        $usage.WeekPct | Should -Be 4
+        $script:tokenCalls | Should -Be 1
+        $saved = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $saved.'https://auth.x.ai::test-client'.refresh_token | Should -Be 'rotated-refresh'
+        $saved.'https://auth.x.ai::test-client'.key | Should -Be 'fresh-access'
+    }
+
+    It 'leaves the saved session alone when refresh is rejected' {
+        $path = Join-Path $script:sandbox 'auth.json'
+        @{
+            'https://auth.x.ai::test-client' = @{
+                key            = 'expired-key'
+                refresh_token  = 'refresh-value'
+                expires_at     = ([datetimeoffset]::UtcNow.AddHours(-2)).ToString('o')
+                auth_mode      = 'oidc'
+                oidc_issuer    = 'https://auth.x.ai'
+                oidc_client_id = 'test-client'
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding utf8
+
+        Mock Invoke-RestMethod {
+            if ([string]$Uri -match '/oauth2/token$') { throw 'invalid_grant' }
+            throw 'billing should not run'
+        }
+
+        Get-GrokLiveUsage -AuthPath $path -TimeoutSec 5 | Should -BeNullOrEmpty
+        $script:GrokAuthState | Should -Be 'auth'
+        $script:GrokErrMsg | Should -Not -Match 'expired-key|refresh-value|invalid_grant'
+        $saved = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        $saved.'https://auth.x.ai::test-client'.key | Should -Be 'expired-key'
+        $saved.'https://auth.x.ai::test-client'.refresh_token | Should -Be 'refresh-value'
+    }
+
+    It 'keeps billing with the current token when refresh fails but the access token is still valid' {
+        $path = Join-Path $script:sandbox 'auth.json'
+        @{
+            'https://auth.x.ai::test-client' = @{
+                key            = 'still-good'
+                refresh_token  = 'refresh-value'
+                expires_at     = ([datetimeoffset]::UtcNow.AddHours(5)).ToString('o')
+                auth_mode      = 'oidc'
+                oidc_issuer    = 'https://auth.x.ai'
+                oidc_client_id = 'test-client'
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding utf8
+
+        Mock Update-GrokStoredSession { throw 'lock timeout' }
+        Mock Invoke-RestMethod {
+            $script:billingAuth = [string]$Headers['Authorization']
+            return [pscustomobject]@{
+                config = [pscustomobject]@{
+                    creditUsagePercent = 21
+                    currentPeriod = [pscustomobject]@{ end = ([datetimeoffset]::UtcNow.AddHours(60)).ToString('o') }
+                }
+            }
+        }
+
+        $usage = Get-GrokLiveUsage -AuthPath $path -TimeoutSec 5
+        $usage.WeekPct | Should -Be 21
+        $usage.WeekResetsAt | Should -Not -BeNullOrEmpty
+        $script:billingAuth | Should -Be 'Bearer still-good'
+        $script:GrokAuthState | Should -Be 'ok'
+        $script:GrokErrMsg | Should -Not -Match 'still-good|refresh-value|lock timeout'
+    }
+}
+
+Describe 'Grok usage carry-forward' {
+    It 'keeps the last weekly reset when a poll is only stale' {
+        $previous = @{ WeekPct = 21; WeekResetsAt = '2026-09-28T13:14:09Z' }
+        $kept = Resolve-GrokUsageCarryForward -Previous $previous -Incoming $null -AuthState 'stale'
+        $kept.WeekResetsAt | Should -Be '2026-09-28T13:14:09Z'
+    }
+
+    It 'drops the last reading when the session is logged out' {
+        $previous = @{ WeekPct = 21; WeekResetsAt = '2026-09-28T13:14:09Z' }
+        Resolve-GrokUsageCarryForward -Previous $previous -Incoming $null -AuthState 'auth' | Should -BeNullOrEmpty
+        Resolve-GrokUsageCarryForward -Previous $previous -Incoming $null -AuthState 'notoken' | Should -BeNullOrEmpty
+    }
+
+    It 'uses a fresh reading when one arrives' {
+        $previous = @{ WeekPct = 21; WeekResetsAt = '2026-09-28T13:14:09Z' }
+        $incoming = @{ WeekPct = 22; WeekResetsAt = '2026-09-28T13:14:09Z' }
+        (Resolve-GrokUsageCarryForward -Previous $previous -Incoming $incoming -AuthState 'ok').WeekPct | Should -Be 22
+    }
+}
+

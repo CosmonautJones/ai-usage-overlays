@@ -753,6 +753,7 @@ function Check-Alert([string]$key, $util, $resetAt = $null) {
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Dismiss current alert' { Dismiss-CurrentAlerts }))
 Add-Separator
 [void]$script:ctxStrip.Items.Add((New-StripItem 'Copy stats to clipboard' { Copy-Stats }))
+[void]$script:ctxStrip.Items.Add((New-StripItem 'Copy usage ledger' { Copy-UsageLedger }))
 
 # Official vendor pages — one shared shape (provider → Usage + Docs). Hidden
 # HUD tiles still keep their links. Labels/URLs vary per vendor on purpose.

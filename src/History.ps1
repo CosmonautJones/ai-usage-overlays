@@ -104,6 +104,13 @@ function Complete-UnifiedHistoryPoll {
         cursor = ($script:AuthState -eq 'ok')
     }
     Save-History
+    if (Get-Command Add-UsageLedgerPoll -ErrorAction SilentlyContinue) {
+        try { Add-UsageLedgerPoll | Out-Null } catch {
+            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log "Usage ledger poll failed: $($_.Exception.Message)"
+            }
+        }
+    }
 }
 
 function Save-History {

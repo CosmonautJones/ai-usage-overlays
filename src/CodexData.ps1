@@ -62,6 +62,7 @@ if (-not $script:CodexSessionsDir) {
 
 $script:CodexStats = $null
 $script:CodexStatsFileCache = @{}
+$script:CodexUnknownModelsLogged = [System.Collections.Generic.HashSet[string]]::new()
 
 # Mirrors Cursor's contract (see Test-ProviderAuthFailed in Config.ps1) so both
 # providers report auth trouble the same way instead of failing silently.
@@ -536,9 +537,13 @@ function Estimate-CodexCost([string]$model, $v) {
         } else {
             $tier = 'gpt-5.5'
         }
+    } elseif ($script:CodexPrices.ContainsKey($model)) {
+        $tier = $model
     } else {
         $tier = 'default'
-        if ($model -and (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
+        # Once per model per poll: this runs for every cached record.
+        if ($model -and $script:CodexUnknownModelsLogged.Add($model) -and
+            (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
             Write-Log "Unknown Codex model '$model' - falling back to default pricing (verify prices)"
         }
     }
@@ -656,16 +661,45 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
         ResetsAvailable  = $null
+        CreditBalance    = $null
+        CreditsUnlimited = $false
         PlanType         = $null
         Model            = $currentModel
         LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
 }
 
+# ChatGPT sends credits.balance as a decimal string ("61902.7572305000").
+# Settings shows that same balance rounded to a whole credit.
+function ConvertTo-CodexCreditBalance($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [string]) {
+        $text = $value.Trim()
+        if ($text -eq '') { return $null }
+        $parsed = 0.0
+        $ok = [double]::TryParse(
+            $text,
+            [Globalization.NumberStyles]::Float,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$parsed)
+        if (-not $ok) { return $null }
+        if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed)) { return $null }
+        return $parsed
+    }
+    try {
+        $n = [double]$value
+    } catch {
+        return $null
+    }
+    if ([double]::IsNaN($n) -or [double]::IsInfinity($n)) { return $null }
+    return $n
+}
+
 # Parse the Codex live usage endpoint (chatgpt.com/backend-api/wham/usage)
 # response into overlay fields. Match explicit five-hour/seven-day durations; the reset
-# credit count backs the "N resets available" line. Pure so it can be tested
-# without a network call.
+# credit count backs the "N resets available" line. credits.balance is the Pro
+# usage-credit balance from Settings > Usage, separate from reset credits.
+# Pure so it can be tested without a network call.
 function ConvertFrom-CodexUsageResponse($obj) {
     if (-not $obj) { return $null }
 
@@ -701,12 +735,21 @@ function ConvertFrom-CodexUsageResponse($obj) {
         $resetsAvailable = [int]$obj.rate_limit_reset_credits.available_count
     }
 
+    $creditBalance = $null
+    $creditsUnlimited = $false
+    if ($obj.credits) {
+        $creditBalance = ConvertTo-CodexCreditBalance $obj.credits.balance
+        if ($obj.credits.unlimited -eq $true) { $creditsUnlimited = $true }
+    }
+
     return @{
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
         FiveHourPct      = $fiveHourPct
         FiveHourResetsAt = $fiveHourResetsAt
         ResetsAvailable  = $resetsAvailable
+        CreditBalance    = $creditBalance
+        CreditsUnlimited = $creditsUnlimited
         PlanType         = $obj.plan_type
     }
 }
@@ -945,6 +988,13 @@ function Get-CodexStats {
     try {
         if ($sessionDirs.Count -gt 0) {
             $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
+            if (Get-Command Save-UsageDayHistory -ErrorAction SilentlyContinue) {
+                try {
+                    Save-UsageDayHistory -Rollup (Get-UsageDayRollup -Records $allRecords.ToArray() -Provider 'codex')
+                } catch {
+                    Write-CodexLog "Get-CodexStats: usage history save failed - $($_.Exception.Message)"
+                }
+            }
         }
     } catch {
         Write-CodexLog "Get-CodexStats: Measure-CodexStats failed - $($_.Exception.Message)"
@@ -964,6 +1014,8 @@ function Get-CodexStats {
             $script:CodexStats.FiveHourPct = $live.FiveHourPct
             $script:CodexStats.FiveHourResetsAt = $live.FiveHourResetsAt
             $script:CodexStats.ResetsAvailable = $live.ResetsAvailable
+            $script:CodexStats.CreditBalance = $live.CreditBalance
+            $script:CodexStats.CreditsUnlimited = [bool]$live.CreditsUnlimited
             if ($live.PlanType) { $script:CodexStats.PlanType = $live.PlanType }
         }
     } catch {

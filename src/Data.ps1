@@ -1,7 +1,47 @@
 # Data.ps1 - data fetchers: Get-Usage, Get-Stats, and the Write-Log diagnostic helper
 
+# Limit-LogFile - once a log passes MaxBytes, cut it back to its newest
+# KeepBytes, starting on a whole line. Cutting just past a 0x0A byte is safe for
+# UTF-8, which never uses that byte inside a multi-byte character.
+function Limit-LogFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [long]$MaxBytes = 1MB,
+        [long]$KeepBytes = 256KB
+    )
+
+    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    $info = [System.IO.FileInfo]::new($full)
+    if (-not $info.Exists -or $info.Length -le $MaxBytes) { return }
+
+    $keep = [long][Math]::Min($KeepBytes, $info.Length)
+    $tail = New-Object byte[] $keep
+    $read = 0
+    $stream = [System.IO.File]::Open($full, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        [void]$stream.Seek(-$keep, [System.IO.SeekOrigin]::End)
+        while ($read -lt $keep) {
+            $n = $stream.Read($tail, $read, $keep - $read)
+            if ($n -le 0) { break }
+            $read += $n
+        }
+    } finally {
+        $stream.Dispose()
+    }
+
+    $start = [Array]::IndexOf($tail, [byte]10, 0, $read) + 1
+    $kept = New-Object byte[] ($read - $start)
+    [Array]::Copy($tail, $start, $kept, 0, $kept.Length)
+    [System.IO.File]::WriteAllBytes($full, $kept)
+}
+
 function Write-Log {
     param([string]$Message)
+    try {
+        Limit-LogFile -Path $script:ErrLog
+    } catch {
+        $Message = "$Message (log trim failed: $($_.Exception.Message))"
+    }
     try {
         $line = '[{0}] {1}' -f (Get-Date -Format 's'), $Message
         Add-Content -Path $script:ErrLog -Value $line -Encoding UTF8
@@ -938,6 +978,13 @@ function Get-Stats {
 
     try {
         $script:Stats = Measure-Stats $allRecords.ToArray() (Get-Date)
+        if (Get-Command Save-UsageDayHistory -ErrorAction SilentlyContinue) {
+            try {
+                Save-UsageDayHistory -Rollup (Get-UsageDayRollup -Records $allRecords.ToArray() -Provider 'claude')
+            } catch {
+                Write-Log "Get-Stats: usage history save failed - $($_.Exception.Message)"
+            }
+        }
     } catch {
         Write-Log "Get-Stats: Measure-Stats failed - $($_.Exception.Message)"
     }

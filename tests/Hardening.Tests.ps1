@@ -20,6 +20,15 @@ Describe 'Provider failure boundaries' {
             @($parseErrors).Count | Should -Be 0 -Because $file.Name
         }
     }
+    It 'ships no script pinned to one Windows user profile' {
+        # src\*.ps1 is copied wholesale into every install, so a literal
+        # C:\Users\<name>\ path points each installer at someone else's machine.
+        foreach ($file in @(Get-ChildItem "$root/src/*.ps1") + @(Get-Item "$root/unified-overlay.ps1")) {
+            $hits = @(Select-String -LiteralPath $file.FullName -Pattern '[A-Za-z]:\\Users\\' |
+                ForEach-Object { '{0}:{1}' -f $_.Filename, $_.LineNumber })
+            $hits | Should -BeNullOrEmpty -Because $file.Name
+        }
+    }
     BeforeEach {
         $script:authFile = Join-Path $TestDrive 'auth.json'
         '{"access_token":"secret-value"}' | Set-Content $script:authFile
@@ -129,6 +138,12 @@ Describe 'Codex data integrity' {
         Get-CodexStats
         $script:CodexStats.WeekPct | Should -Be 42
         Should -Invoke Get-CodexLiveUsage -Times 1 -Exactly
+    }
+    It 'copies the ChatGPT credit balance onto the Codex stats' {
+        Mock Get-CodexLiveUsage { @{ WeekPct = 100; CreditBalance = 61902.7572305; CreditsUnlimited = $false; PlanType = 'pro' } }
+        Get-CodexStats
+        [math]::Abs($script:CodexStats.CreditBalance - 61902.7572305) | Should -BeLessThan 0.001
+        $script:CodexStats.CreditsUnlimited | Should -BeFalse
     }
     It 'attributes incremental usage to its event day and model and survives cache reload' {
         New-Item -ItemType Directory $script:CodexSessionsDir | Out-Null

@@ -34,6 +34,8 @@ Describe 'Get-UnifiedExportLines full payloads' {
             WeekPct = 33
             FiveHourPct = 8
             ResetsAvailable = 2
+            CreditBalance = 61902.7572305000
+            CreditsUnlimited = $false
             ValueUSD = 9
             InTokens = 2000
             OutTokens = 400
@@ -100,6 +102,7 @@ Describe 'Get-UnifiedExportLines full payloads' {
         $script:text | Should -Match 'Codex weekly: 33% used'
         $script:text | Should -Match 'Codex 5-hour: 8% used'
         $script:text | Should -Match 'Codex reset credits: 2 available'
+        $script:text | Should -Match 'Codex credits: 61,903 remaining'
         $script:text | Should -Match 'Codex est. API value: ~\$9 all-time'
         $script:text | Should -Match 'Codex tokens: 2\.0k in / 400 out'
         $script:text | Should -Match 'Codex today: 800 tokens / 2 msgs'
@@ -134,6 +137,8 @@ Describe 'Get-UnifiedExportLines missing values stay honest' {
             WeekPct = $null
             FiveHourPct = $null
             ResetsAvailable = $null
+            CreditBalance = $null
+            CreditsUnlimited = $false
             ValueUSD = 0
             InTokens = 0
             OutTokens = 0
@@ -173,6 +178,7 @@ Describe 'Get-UnifiedExportLines missing values stay honest' {
         $text | Should -Not -Match 'Codex 5-hour'
         $text | Should -Match 'Codex weekly: --'
         $text | Should -Match 'Codex reset credits: --'
+        $text | Should -Match 'Codex credits: --'
         $text | Should -Match 'Cursor Models: --'
         $text | Should -Match 'Cursor Other Models: --'
         $text | Should -Match 'Cursor on-demand: \$1\.50'
@@ -229,7 +235,7 @@ Describe 'Snapshot provider objects from in-memory payloads' {
 
     It 'keeps Codex weekly, 5-hour, reset credits, and local facts on stats' {
         $stats = @{
-            WeekPct = 33; FiveHourPct = 8; ResetsAvailable = 2
+            WeekPct = 33; FiveHourPct = 8; ResetsAvailable = 2; CreditBalance = 61902.7572305000
             ValueUSD = 9; InTokens = 2000; OutTokens = 400
             TodayTok = 800; TodayAfterHoursTok = 50; Sessions = 6; Messages = 30
         }
@@ -237,6 +243,7 @@ Describe 'Snapshot provider objects from in-memory payloads' {
         $snap.stats.WeekPct | Should -Be 33
         $snap.stats.FiveHourPct | Should -Be 8
         $snap.stats.ResetsAvailable | Should -Be 2
+        $snap.stats.CreditBalance | Should -Be 61902.7572305000
         $snap.stats.TodayAfterHoursTok | Should -Be 50
         $snap.stats.Sessions | Should -Be 6
     }

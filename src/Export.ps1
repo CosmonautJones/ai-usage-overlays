@@ -135,6 +135,9 @@ function Get-CodexExportLines {
     } else {
         $lines.Add('Codex reset credits: --')
     }
+    $creditBalance = Get-ExportNote $Stats 'CreditBalance'
+    $creditsUnlimited = Get-ExportNote $Stats 'CreditsUnlimited'
+    $lines.Add(('Codex credits: {0}' -f (Format-CodexCreditsRemaining $creditBalance $creditsUnlimited)))
     $value = Get-ExportNote $Stats 'ValueUSD'
     $inTok = Get-ExportNote $Stats 'InTokens'
     $outTok = Get-ExportNote $Stats 'OutTokens'
@@ -240,7 +243,8 @@ function Get-UnifiedExportLines {
         $CursorSummary,
         $CursorLocal,
         $GrokUsage,
-        $Sections
+        $Sections,
+        $LedgerMath
     )
 
     $header = 'AI Usage Overlay'
@@ -268,6 +272,12 @@ function Get-UnifiedExportLines {
     if (Test-ExportSectionIncluded $Sections 'grok') {
         foreach ($line in @(Get-GrokExportLines -Usage $GrokUsage)) {
             $lines.Add($line)
+        }
+    }
+    if ($LedgerMath -and (Get-Command Format-UsageLedgerReport -ErrorAction SilentlyContinue)) {
+        $lines.Add('')
+        foreach ($line in @(Format-UsageLedgerReport $LedgerMath)) {
+            $lines.Add([string]$line)
         }
     }
 
