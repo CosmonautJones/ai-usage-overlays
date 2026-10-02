@@ -135,6 +135,9 @@ function Get-CodexExportLines {
     } else {
         $lines.Add('Codex reset credits: --')
     }
+    $creditBalance = Get-ExportNote $Stats 'CreditBalance'
+    $creditsUnlimited = Get-ExportNote $Stats 'CreditsUnlimited'
+    $lines.Add(('Codex credits: {0}' -f (Format-CodexCreditsRemaining $creditBalance $creditsUnlimited)))
     $value = Get-ExportNote $Stats 'ValueUSD'
     $inTok = Get-ExportNote $Stats 'InTokens'
     $outTok = Get-ExportNote $Stats 'OutTokens'

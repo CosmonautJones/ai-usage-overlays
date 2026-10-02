@@ -491,4 +491,71 @@ Describe 'ConvertFrom-CodexUsageResponse' {
     It 'returns null for an empty response' {
         ConvertFrom-CodexUsageResponse $null | Should -BeNullOrEmpty
     }
+
+    It 'parses the Pro usage-credit balance string from wham/usage' {
+        $obj = [pscustomobject]@{
+            plan_type = 'pro'
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{
+                    used_percent = 100
+                    limit_window_seconds = 604800
+                    reset_at = 1784488309
+                }
+            }
+            credits = [pscustomobject]@{
+                has_credits = $true
+                unlimited = $false
+                balance = '61902.7572305000'
+            }
+            rate_limit_reset_credits = [pscustomobject]@{ available_count = 1 }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        [math]::Abs($u.CreditBalance - 61902.7572305) | Should -BeLessThan 0.001
+        $u.CreditsUnlimited | Should -BeFalse
+        [math]::Round([double]$u.CreditBalance, 0, [MidpointRounding]::AwayFromZero) | Should -Be 61903
+        $u.ResetsAvailable | Should -Be 1
+    }
+
+    It 'leaves the credit balance empty when ChatGPT omits it' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ has_credits = $false; unlimited = $false; balance = $null }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1784488309 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $null -eq $u.CreditBalance | Should -BeTrue
+        $u.CreditsUnlimited | Should -BeFalse
+    }
+
+    It 'keeps a numeric balance and the unlimited flag' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ unlimited = $true; balance = 0 }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.CreditBalance | Should -Be 0
+        $u.CreditsUnlimited | Should -BeTrue
+    }
+
+    It 'ignores a credit balance that is not a number' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ balance = 'not-a-balance'; unlimited = $false }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $null -eq $u.CreditBalance | Should -BeTrue
+    }
 }

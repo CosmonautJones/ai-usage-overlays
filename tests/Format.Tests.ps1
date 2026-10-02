@@ -67,6 +67,28 @@ Describe 'Fmt-Money' {
     }
 }
 
+Describe 'Format-CodexCreditsRemaining' {
+    It 'rounds the Pro balance the way Settings shows credits remaining' {
+        Format-CodexCreditsRemaining 61902.7572305000 $false | Should -Be '61,903 remaining'
+    }
+    It 'rounds a half credit away from zero' {
+        Format-CodexCreditsRemaining 2.5 $false | Should -Be '3 remaining'
+    }
+    It 'shows zero when the balance is actually zero' {
+        Format-CodexCreditsRemaining 0 $false | Should -Be '0 remaining'
+    }
+    It 'shows a negative balance' {
+        Format-CodexCreditsRemaining -3.2 $false | Should -Be '-3 remaining'
+    }
+    It 'shows unlimited when ChatGPT marks the balance unlimited' {
+        Format-CodexCreditsRemaining 12 $true | Should -Be 'unlimited'
+    }
+    It 'stays blank when the balance was not returned' {
+        Format-CodexCreditsRemaining $null $false | Should -Be '--'
+        Format-CodexCreditsRemaining $null $null | Should -Be '--'
+    }
+}
+
 Describe 'Remaining-Color' {
     It 'returns red for <= 5% remaining' {
         Remaining-Color 0 | Should -Be '#F87171'

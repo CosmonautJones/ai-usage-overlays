@@ -139,6 +139,12 @@ Describe 'Codex data integrity' {
         $script:CodexStats.WeekPct | Should -Be 42
         Should -Invoke Get-CodexLiveUsage -Times 1 -Exactly
     }
+    It 'copies the ChatGPT credit balance onto the Codex stats' {
+        Mock Get-CodexLiveUsage { @{ WeekPct = 100; CreditBalance = 61902.7572305; CreditsUnlimited = $false; PlanType = 'pro' } }
+        Get-CodexStats
+        [math]::Abs($script:CodexStats.CreditBalance - 61902.7572305) | Should -BeLessThan 0.001
+        $script:CodexStats.CreditsUnlimited | Should -BeFalse
+    }
     It 'attributes incremental usage to its event day and model and survives cache reload' {
         New-Item -ItemType Directory $script:CodexSessionsDir | Out-Null
         $yesterday = (Get-Date).Date.AddDays(-1).AddHours(10).ToString('o')
