@@ -1,7 +1,8 @@
 # Builds the Inno Setup installer artifact.
 [CmdletBinding()]
 param(
-    [string]$Version = '0.4.1',
+    [string]$Version = '0.4.3',
+    [string]$Revision = '',
     [string]$OutputDir = (Join-Path $PSScriptRoot '..\dist')
 )
 
@@ -11,6 +12,17 @@ $issPath = Join-Path $PSScriptRoot 'inno\AIUsageOverlay.iss'
 $resolvedOutput = New-Item -ItemType Directory -Force -Path $OutputDir
 $buildDir = New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot 'build')
 Set-Content -Path (Join-Path $buildDir.FullName 'app-version.txt') -Value $Version -Encoding ASCII
+if (-not $Revision) {
+    try {
+        $Revision = (& git -C (Join-Path $PSScriptRoot '..') rev-parse HEAD 2>$null)
+        if ($Revision) { $Revision = $Revision.Trim() }
+    } catch {
+        $Revision = ''
+    }
+}
+if ($Revision) {
+    Set-Content -Path (Join-Path $buildDir.FullName 'app-revision.txt') -Value $Revision.Trim() -Encoding ASCII
+}
 
 $isccCandidates = @(
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),

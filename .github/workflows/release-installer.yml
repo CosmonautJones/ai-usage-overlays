@@ -5,12 +5,9 @@ permissions:
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: Installer version
-        required: false
-        default: 0.1.0
   push:
+    branches:
+      - master
     tags:
       - 'v*'
 
@@ -28,11 +25,11 @@ jobs:
       - name: Build setup EXE
         shell: pwsh
         run: |
-          $version = '${{ github.event.inputs.version }}'
-          if (-not $version) {
-            $version = '${{ github.ref_name }}' -replace '^v', ''
-          }
-          pwsh -NoLogo -NoProfile -File packaging\build-installer.ps1 -Version $version
+          $ErrorActionPreference = 'Stop'
+          $match = Select-String -Path src\Config.ps1 -Pattern "\`$script:AppVersion\s*=\s*'([^']+)'" | Select-Object -First 1
+          if (-not $match) { throw 'AppVersion not found in src/Config.ps1' }
+          $version = $match.Matches[0].Groups[1].Value
+          pwsh -NoLogo -NoProfile -File packaging\build-installer.ps1 -Version $version -Revision '${{ github.sha }}'
 
       - name: Upload setup artifact
         uses: actions/upload-artifact@v4
@@ -40,7 +37,35 @@ jobs:
           name: AIUsageOverlaySetup
           path: dist/AIUsageOverlaySetup.exe
 
-      - name: Attach installer to GitHub release
+      - name: Publish master as the latest release
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '${{ github.sha }}'.ToLowerInvariant()
+          $repo = '${{ github.repository }}'
+          $match = Select-String -Path src\Config.ps1 -Pattern "\`$script:AppVersion\s*=\s*'([^']+)'" | Select-Object -First 1
+          if (-not $match) { throw 'AppVersion not found in src/Config.ps1' }
+          $version = $match.Matches[0].Groups[1].Value
+
+          $published = gh api "repos/$repo/releases?per_page=30" --jq ".[] | select(.body != null) | select(.body | contains(\"Revision: $sha\")) | .tag_name"
+          if ($published) {
+            Write-Host "Release already published for $sha ($published)"
+            exit 0
+          }
+
+          $tag = "v$version"
+          gh release view $tag --repo $repo 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            $tag = "v$version.${{ github.run_number }}"
+          }
+
+          $notes = "Revision: $sha`n`nBuilt from master."
+          gh release create $tag --repo $repo --target $sha --title "AI Usage Overlay $tag" --notes $notes "dist/AIUsageOverlaySetup.exe"
+
+      - name: Attach installer to an existing version tag
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:

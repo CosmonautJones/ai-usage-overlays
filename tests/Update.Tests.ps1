@@ -67,6 +67,75 @@ Describe 'Convert-GitHubReleaseToAppUpdateInfo' {
     }
 }
 
+Describe 'Master branch updates' {
+    BeforeAll {
+        $script:MasterSha = '0123456789abcdef0123456789abcdef01234567'
+        $script:OlderSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        $script:NewMasterRelease = {
+            param([string]$Revision, [string]$Tag = 'v0.4.3')
+            [pscustomobject]@{
+                tag_name = $Tag
+                html_url = "https://example.test/releases/$Tag"
+                target_commitish = 'master'
+                body = "Revision: $Revision`n`nBuilt from master."
+                assets = @(
+                    [pscustomobject]@{ name = 'AIUsageOverlaySetup.exe'; browser_download_url = 'https://example.test/setup.exe' }
+                )
+            }
+        }.GetNewClosure()
+    }
+
+    It 'treats the installed master commit as current' {
+        $release = & $script:NewMasterRelease $script:MasterSha
+        $info = Resolve-AppUpdateFromMaster -MasterSha $script:MasterSha -InstalledRevision $script:MasterSha -Release $release -CurrentVersion '0.4.3'
+        $info.Status | Should -Be 'current'
+    }
+
+    It 'offers the installer when master has moved and that commit is published' {
+        $release = & $script:NewMasterRelease $script:MasterSha 'v0.4.3.12'
+        $info = Resolve-AppUpdateFromMaster -MasterSha $script:MasterSha -InstalledRevision $script:OlderSha -Release $release -CurrentVersion '0.4.3'
+        $info.Status | Should -Be 'available'
+        $info.DownloadUrl | Should -Be 'https://example.test/setup.exe'
+        $info.LatestVersion | Should -Be 'v0.4.3.12'
+        $info.Message | Should -Match '0123456'
+    }
+
+    It 'waits when master has moved but the installer is not published yet' {
+        $release = & $script:NewMasterRelease $script:OlderSha
+        $info = Resolve-AppUpdateFromMaster -MasterSha $script:MasterSha -InstalledRevision $script:OlderSha -Release $release -CurrentVersion '0.4.3'
+        $info.Status | Should -Be 'pending'
+        $info.DownloadUrl | Should -BeNullOrEmpty
+    }
+
+    It 'reads the revision from target_commitish when the notes have none' {
+        $release = & $script:NewMasterRelease ''
+        $release.body = 'no revision line'
+        $release.target_commitish = $script:MasterSha
+        $info = Resolve-AppUpdateFromMaster -MasterSha $script:MasterSha -InstalledRevision $script:OlderSha -Release $release -CurrentVersion '0.4.3'
+        $info.Status | Should -Be 'available'
+    }
+
+    It 'checks master when the install recorded a revision' {
+        Mock Get-GitHubMasterCommit { [pscustomobject]@{ sha = '0123456789abcdef0123456789abcdef01234567' } }
+        Mock Get-GitHubLatestRelease {
+            [pscustomobject]@{
+                tag_name = 'v0.4.3'
+                html_url = 'https://example.test/releases/v0.4.3'
+                target_commitish = 'master'
+                body = "Revision: 0123456789abcdef0123456789abcdef01234567`n`nBuilt from master."
+                assets = @(
+                    [pscustomobject]@{ name = 'AIUsageOverlaySetup.exe'; browser_download_url = 'https://example.test/setup.exe' }
+                )
+            }
+        }
+
+        $info = Test-AppUpdateAvailable -InstalledRevision 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' -CurrentVersion '0.4.3'
+
+        $info.Status | Should -Be 'available'
+        Should -Invoke Get-GitHubMasterCommit -Times 1 -Exactly
+    }
+}
+
 Describe 'Test-AppUpdateAvailable' {
     It 'does not throw when GitHub checks fail' {
         Mock Get-GitHubLatestRelease { throw 'network down' }

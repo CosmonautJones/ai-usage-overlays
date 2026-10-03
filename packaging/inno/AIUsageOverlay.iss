@@ -1,6 +1,6 @@
 #define AppName "AI Usage Overlay"
 #ifndef AppVersion
-#define AppVersion "0.4.1"
+#define AppVersion "0.4.3"
 #endif
 #ifndef RepoRoot
 #define RepoRoot "..\.."
@@ -43,6 +43,7 @@ Source: "{#RepoRoot}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}\docs\preview.png"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RepoRoot}\packaging\build\app-version.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#RepoRoot}\packaging\build\app-revision.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#RepoRoot}\src\*.ps1"; DestDir: "{app}\src"; Flags: ignoreversion
 Source: "{#RepoRoot}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#RepoRoot}\packaging\inno\installer-hooks.ps1"; DestDir: "{app}\packaging"; Flags: ignoreversion

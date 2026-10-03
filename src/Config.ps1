@@ -11,10 +11,12 @@ $script:WarnPct        = 80
 $script:CritPct        = 95
 $script:WorkdayStartHour = 8
 $script:WorkdayEndHour   = 18
-$script:AppVersion     = '0.4.2'
+$script:AppVersion     = '0.4.3'
 $script:RepoOwner      = 'CosmonautJones'
 $script:RepoName       = 'ai-usage-overlays'
-$script:UpdateChannel  = 'release'
+# master: the latest master commit is the latest installable release.
+# release: compare semantic versions of GitHub releases only.
+$script:UpdateChannel  = 'master'
 
 # ---------------------------------------------------------------------------
 # Shared provider health vocabulary

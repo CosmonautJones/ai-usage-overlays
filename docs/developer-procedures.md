@@ -208,31 +208,20 @@ git commit -m "Describe the release change"
 git push origin master
 ```
 
-6. Create and push the release tag:
+6. Push `master`. That push is the release. The `Release Installer` workflow builds `AIUsageOverlaySetup.exe` from the commit and publishes it as the latest GitHub release, stamped with `Revision: <sha>`.
+
+The first publish of a version uses the tag `v{AppVersion}`. A later `master` commit with the same version uses `v{AppVersion}.{run}` so already-installed copies still see a newer release. Do not create that tag by hand.
+
+7. Confirm the release workflow:
 
 ```powershell
-git tag -a v0.1.3 -m "AI Usage Overlay v0.1.3"
-git push origin v0.1.3
+gh run list --repo CosmonautJones/ai-usage-overlays --workflow "Release Installer" --limit 5
+gh release view --repo CosmonautJones/ai-usage-overlays --json tagName,url,assets
 ```
 
-7. Create the GitHub release:
+The release is not complete until `AIUsageOverlaySetup.exe` is attached and the release notes contain `Revision:` plus the `master` commit SHA.
 
-```powershell
-gh release create v0.1.3 --repo tjones-gss/ai-usage-overlays --title "AI Usage Overlay v0.1.3" --notes-file release-notes.md --verify-tag
-```
-
-The `Release Installer` workflow runs on `v*` tags and attaches `AIUsageOverlaySetup.exe` to the release.
-
-8. Confirm the release workflow:
-
-```powershell
-gh run list --repo tjones-gss/ai-usage-overlays --workflow "Release Installer" --limit 5
-gh release view v0.1.3 --repo tjones-gss/ai-usage-overlays --json tagName,url,assets
-```
-
-The release is not complete until `AIUsageOverlaySetup.exe` is attached.
-
-9. Close shipped issues with a short release note comment:
+8. Close shipped issues with a short release note comment:
 
 ```md
 Shipped in v0.1.3.
@@ -248,13 +237,13 @@ For changes that touch `src/Update.ps1`, installer hooks, release workflow, app 
 
 1. Install an older release with `AIUsageOverlaySetup.exe`.
 2. Launch the overlay.
-3. Publish or select a newer GitHub release containing `AIUsageOverlaySetup.exe`.
+3. Push a newer commit to `master` and wait until its release contains `AIUsageOverlaySetup.exe`.
 4. Use **Check for updates** from the tray menu.
 5. Confirm **Install update** becomes enabled.
 6. Choose **Install update** and wait for setup to finish.
 7. Confirm the old overlay process exits and a new one starts.
 8. Confirm the Startup shortcut still launches `Start-Unified.vbs`.
-9. Confirm `app-version.txt` contains the new version.
+9. Confirm `app-version.txt` contains the new version and `app-revision.txt` contains the new master SHA.
 10. Confirm local state/cache/history files are preserved.
 
 ## Release Notes Template

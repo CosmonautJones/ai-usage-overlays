@@ -30,6 +30,19 @@ Write-Host 'Installing unified AI usage overlay...'
 $dest = "$env:LOCALAPPDATA\AIUsageOverlay"
 Copy-OverlayInstallFiles -SourceRoot $src -DestRoot $dest
 
+try {
+    $headers = @{
+        'User-Agent' = 'AIUsageOverlay-install'
+        'Accept'     = 'application/vnd.github+json'
+    }
+    $commit = Invoke-RestMethod -Uri 'https://api.github.com/repos/CosmonautJones/ai-usage-overlays/commits/master' -Headers $headers
+    if ($commit.sha) {
+        Set-Content -LiteralPath (Join-Path $dest 'app-revision.txt') -Value $commit.sha.Trim() -Encoding ascii -NoNewline
+    }
+} catch {
+    Write-Host 'Could not record the master revision. Update checks will use the release version.'
+}
+
 & $ps.Source -STA -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$dest\unified-overlay.ps1" -Install
 
 # Cleanup
