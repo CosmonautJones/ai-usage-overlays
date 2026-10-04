@@ -534,6 +534,13 @@ $xaml = @'
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexResetsText" Text="--" Foreground="#4ADE80" FontSize="12" FontFamily="Consolas"/>
             </Grid>
+            <Grid x:Name="codexCreditsRow" Margin="0,0,0,1">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="CREDITS" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="codexCreditsText" Text="--" Foreground="#4ADE80" FontSize="12" FontFamily="Consolas"
+                         ToolTip="ChatGPT usage credits remaining. Same balance as Settings, Usage."/>
+            </Grid>
             <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
@@ -1664,6 +1671,7 @@ function Update-CodexSection {
         Set-Spark 'codexWeekSpark' 'codexWeekSparkCanvas' 'codex_seven_day' 'codexWeekSparkRow'
         Set-Spark 'codexWeekSparkC' 'codexWeekSparkCanvasC' 'codex_seven_day' 'codexWeekSparkRowC'
         $cr = $script:window.FindName('codexResetsText'); if ($cr) { $cr.Text = '--' }
+        $cc = $script:window.FindName('codexCreditsText'); if ($cc) { $cc.Text = '--' }
         $tt = $script:window.FindName('codexTokText'); if ($tt) { $tt.Text = '--' }
         $cv = $script:window.FindName('codexValText'); if ($cv) { $cv.Text = '--' }
         $ct = $script:window.FindName('codexTodayText'); if ($ct) { $ct.Text = '--' }
@@ -1712,6 +1720,10 @@ function Update-CodexSection {
         } else {
             $codexResetsText.Text = '--'
         }
+    }
+    $codexCreditsText = $script:window.FindName('codexCreditsText')
+    if ($codexCreditsText) {
+        $codexCreditsText.Text = Format-CodexCreditsRemaining (Get-OverlayStatNote $s 'CreditBalance') (Get-OverlayStatNote $s 'CreditsUnlimited')
     }
     $script:window.FindName('codexValText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
     $script:window.FindName('codexTokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))

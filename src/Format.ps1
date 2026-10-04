@@ -59,3 +59,18 @@ function Fmt-Tok([double]$n) {
 }
 
 function Fmt-Money([double]$n) { return ('${0:N0}' -f $n) }
+
+# Settings > Usage shows the ChatGPT credit balance as a whole number.
+# Unlimited wins over a number. A missing balance stays "--".
+function Format-CodexCreditsRemaining($Balance, $Unlimited) {
+    if ($Unlimited -eq $true) { return 'unlimited' }
+    if ($null -eq $Balance -or [string]$Balance -eq '') { return '--' }
+    try {
+        $n = [double]$Balance
+    } catch {
+        return '--'
+    }
+    if ([double]::IsNaN($n) -or [double]::IsInfinity($n)) { return '--' }
+    $rounded = [math]::Round($n, 0, [MidpointRounding]::AwayFromZero)
+    return ('{0:N0} remaining' -f $rounded)
+}

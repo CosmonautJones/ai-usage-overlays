@@ -288,6 +288,7 @@ function Update-ProviderVersionLabels {
         if ([string]::IsNullOrWhiteSpace($ver)) { $ver = '--' }
         $plan = Get-ProviderPlanLabel $spec.Provider
         $el.Text = Format-ProviderVersionPlanBadge -Version $ver -Plan $plan
+        $el.ToolTip = $el.Text
         if ($el.PSObject.Properties['Foreground']) {
             try { $el.Foreground = (NewBrush $muted) } catch { }
         }

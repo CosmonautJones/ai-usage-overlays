@@ -13,7 +13,7 @@ Built as a TravOS portfolio piece. Each provider is an independent adapter: one 
 | Provider | Live | Local / extra |
 | --- | --- | --- |
 | **Claude Code** | 5-hour, weekly, optional Fable/Opus windows | Identity, estimated cost, tokens, sessions |
-| **Codex** | Weekly % + reset credits; **5-hour % when ChatGPT returns it** | Tokens, cost, today / after-hours, lifetime sessions |
+| **Codex** | Weekly % + reset credits; usage-credit balance when ChatGPT sends one; **5-hour % when ChatGPT returns it** | Tokens, cost, today / after-hours, lifetime sessions |
 | **Cursor** | **Cursor Models** % and plan used/limit from Plan & Usage, **Other Models** %, On-demand Off/$ | 30-day / today edits, top model, AI lines when analytics returns them (otherwise `--`) |
 | **Grok** | SuperGrok / CLI weekly % and reset time; available one-time usage resets | Reset expiry on hover; plan / prepaid only if xAI sends them |
 

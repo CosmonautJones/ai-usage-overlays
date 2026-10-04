@@ -155,6 +155,43 @@ Describe 'Estimate-CodexCost' {
         $v = @{ inputTokens = 1000000; cachedInputTokens = 250000; outputTokens = 100000 }
         Estimate-CodexCost 'gpt-5.5' $v | Should -Be 6.875
     }
+
+    It 'uses a listed model price before the gpt-5.5 family fallback' {
+        $script:CodexPrices['gpt-5.6-sol'] = @{ in = 4.00; cachedIn = 0.40; out = 20.00 }
+        $v = @{ inputTokens = 1000000; cachedInputTokens = 0; outputTokens = 0 }
+        Estimate-CodexCost 'gpt-5.6-sol' $v | Should -Be 4.0
+        Estimate-CodexCost 'gpt-5.9-unlisted' $v | Should -Be 5.0
+    }
+}
+
+Describe 'Estimate-CodexCost unknown-model warning' {
+    BeforeAll {
+        $script:CodexCostLog = [System.Collections.Generic.List[string]]::new()
+        $script:CodexUnknownModelsLogged = [System.Collections.Generic.HashSet[string]]::new()
+        function Write-Log { param([string]$Message) $script:CodexCostLog.Add($Message) }
+    }
+    BeforeEach { $script:CodexCostLog.Clear() }
+
+    It 'warns once per unknown model however many records it prices' {
+        $records = foreach ($i in 1..5) {
+            @{ Model='mystery-model-a'; Date=[datetime]'2026-06-10'; In=100L; CachedIn=0L; Out=10L; SessionId="s$i" }
+        }
+        [void](Measure-CodexStats -records $records -today ([datetime]'2026-06-10'))
+        @($script:CodexCostLog | Where-Object { $_ -match 'mystery-model-a' }).Count | Should -Be 1
+    }
+
+    It 'still warns separately for each distinct unknown model' {
+        $v = @{ inputTokens = 1; cachedInputTokens = 0; outputTokens = 0 }
+        foreach ($m in 'mystery-model-b', 'mystery-model-c', 'mystery-model-b') { [void](Estimate-CodexCost $m $v) }
+        @($script:CodexCostLog | Where-Object { $_ -match 'mystery-model-b' }).Count | Should -Be 1
+        @($script:CodexCostLog | Where-Object { $_ -match 'mystery-model-c' }).Count | Should -Be 1
+    }
+
+    It 'keeps pricing an unknown model at the default rate after the warning' {
+        $v = @{ inputTokens = 1000000; cachedInputTokens = 0; outputTokens = 0 }
+        Estimate-CodexCost 'mystery-model-d' $v | Should -Be 1.0
+        Estimate-CodexCost 'mystery-model-d' $v | Should -Be 1.0
+    }
 }
 
 Describe 'Get-CodexSessionDirCandidates' {
@@ -415,6 +452,117 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.OutTokens | Should -Be 30
         $script:CodexStats.Sessions | Should -Be 2
     }
+
+    It 'counts a resumed session once when the next file continues the cumulative counter' {
+        $baseTime = (Get-Date).Date.AddHours(10)
+        $ts = New-TestTimestamp $baseTime
+        $ts2 = New-TestTimestamp ($baseTime.AddMinutes(5))
+        $ts3 = New-TestTimestamp ($baseTime.AddHours(1))
+        $ts4 = New-TestTimestamp ($baseTime.AddHours(1).AddMinutes(5))
+
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-00-00-resume-a.jsonl' @(
+            @{ timestamp=$ts; type='session_meta'; payload=@{ session_id='resume-1'; timestamp=$ts } }
+            @{ timestamp=$ts; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $ts 100 10 20)
+            (New-CodexTokenEvent $ts2 300 40 50)
+        ) | Out-Null
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T11-00-00-resume-b.jsonl' @(
+            @{ timestamp=$ts3; type='session_meta'; payload=@{ session_id='resume-1'; timestamp=$ts3 } }
+            @{ timestamp=$ts3; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $ts3 300 40 50)
+            (New-CodexTokenEvent $ts4 450 60 80)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.InTokens | Should -Be 450
+        $script:CodexStats.OutTokens | Should -Be 80
+        $script:CodexStats.Sessions | Should -Be 1
+    }
+
+    It 'counts fork growth without counting the copied parent snapshot again' {
+        $baseTime = (Get-Date).Date.AddHours(10)
+        $ts = New-TestTimestamp $baseTime
+        $parentLater = New-TestTimestamp ($baseTime.AddMinutes(10))
+        $forkA = New-TestTimestamp ($baseTime.AddMinutes(20))
+        $forkALater = New-TestTimestamp ($baseTime.AddMinutes(25))
+        $forkB = New-TestTimestamp ($baseTime.AddMinutes(30))
+        $forkBLater = New-TestTimestamp ($baseTime.AddMinutes(35))
+
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-00-00-parent.jsonl' @(
+            @{ timestamp=$ts; type='session_meta'; payload=@{ session_id='fanout'; timestamp=$ts } }
+            @{ timestamp=$ts; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $ts 1000 100 10)
+            (New-CodexTokenEvent $parentLater 5000 400 40)
+        ) | Out-Null
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-20-00-fork-a.jsonl' @(
+            @{ timestamp=$forkA; type='session_meta'; payload=@{ session_id='fanout'; timestamp=$forkA } }
+            @{ timestamp=$forkA; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $forkA 5000 400 40)
+            (New-CodexTokenEvent $forkALater 5600 450 55)
+        ) | Out-Null
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-30-00-fork-b.jsonl' @(
+            @{ timestamp=$forkB; type='session_meta'; payload=@{ session_id='fanout'; timestamp=$forkB } }
+            @{ timestamp=$forkB; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $forkB 5000 400 40)
+            (New-CodexTokenEvent $forkBLater 6200 500 70)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        # Parent 5000, plus fork growth 600 and 1200. The copied 5000 is not added twice.
+        $script:CodexStats.InTokens | Should -Be 6800
+        $script:CodexStats.OutTokens | Should -Be 85
+        $script:CodexStats.Sessions | Should -Be 1
+    }
+
+    It 'counts sibling files that share an opening snapshot and does not collapse them to the larger one' {
+        $baseTime = (Get-Date).Date.AddHours(10)
+        $ts = New-TestTimestamp $baseTime
+        $aLater = New-TestTimestamp ($baseTime.AddMinutes(5))
+        $b = New-TestTimestamp ($baseTime.AddMinutes(10))
+        $bLater = New-TestTimestamp ($baseTime.AddMinutes(15))
+
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-00-00-sib-a.jsonl' @(
+            @{ timestamp=$ts; type='session_meta'; payload=@{ session_id='siblings'; timestamp=$ts } }
+            @{ timestamp=$ts; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $ts 100 0 5)
+            (New-CodexTokenEvent $aLater 400 0 20)
+        ) | Out-Null
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-10-00-sib-b.jsonl' @(
+            @{ timestamp=$b; type='session_meta'; payload=@{ session_id='siblings'; timestamp=$b } }
+            @{ timestamp=$b; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $b 100 0 5)
+            (New-CodexTokenEvent $bLater 250 0 12)
+        ) | Out-Null
+
+        Get-CodexStats
+
+        # Shared opening 100 once, then growth 300 and 150.
+        $script:CodexStats.InTokens | Should -Be 550
+        $script:CodexStats.OutTokens | Should -Be 27
+        $script:CodexStats.Sessions | Should -Be 1
+    }
+
+    It 'counts two identical copies of a session file once' {
+        $baseTime = (Get-Date).Date.AddHours(10)
+        $ts = New-TestTimestamp $baseTime
+        $later = New-TestTimestamp ($baseTime.AddMinutes(5))
+        $events = @(
+            @{ timestamp=$ts; type='session_meta'; payload=@{ session_id='dup'; timestamp=$ts } }
+            @{ timestamp=$ts; type='turn_context'; payload=@{ model='gpt-5.5' } }
+            (New-CodexTokenEvent $ts 100 0 5)
+            (New-CodexTokenEvent $later 400 0 20)
+        )
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-00-00-dup-a.jsonl' $events | Out-Null
+        Write-CodexFixture '2026\06\10\rollout-2026-06-10T10-00-01-dup-b.jsonl' $events | Out-Null
+
+        Get-CodexStats
+
+        $script:CodexStats.InTokens | Should -Be 400
+        $script:CodexStats.OutTokens | Should -Be 20
+        $script:CodexStats.Sessions | Should -Be 1
+    }
 }
 
 Describe 'ConvertFrom-CodexUsageResponse' {
@@ -459,5 +607,98 @@ Describe 'ConvertFrom-CodexUsageResponse' {
 
     It 'returns null for an empty response' {
         ConvertFrom-CodexUsageResponse $null | Should -BeNullOrEmpty
+    }
+
+    It 'accepts a decimal window length and still rejects a one-day window' {
+        $weekly = ConvertFrom-CodexUsageResponse ([pscustomobject]@{
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = '12.5'; limit_window_seconds = '604800.0' }
+            }
+            rate_limit_reset_credits = [pscustomobject]@{ available_count = 2 }
+        })
+        $weekly.WeekPct | Should -Be 12.5
+        $weekly.ResetsAvailable | Should -Be 2
+
+        $oneDay = ConvertFrom-CodexUsageResponse ([pscustomobject]@{
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 50; limit_window_seconds = 86400 }
+            }
+        })
+        $oneDay.WeekPct | Should -BeNullOrEmpty
+        $oneDay.FiveHourPct | Should -BeNullOrEmpty
+    }
+
+    It 'keeps a weekly used percent of zero and the usage-credit balance' {
+        $obj = [pscustomobject]@{
+            plan_type = 'pro'
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{
+                    used_percent = 0
+                    limit_window_seconds = 604800
+                    reset_at = 1791603188
+                }
+                secondary_window = $null
+            }
+            credits = [pscustomobject]@{
+                has_credits = $true
+                unlimited = $false
+                balance = '61119.6042005000'
+            }
+            rate_limit_reset_credits = [pscustomobject]@{ available_count = 1 }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.WeekPct | Should -Be 0
+        $u.FiveHourPct | Should -BeNullOrEmpty
+        $u.ResetsAvailable | Should -Be 1
+        $u.PlanType | Should -Be 'pro'
+        [math]::Abs($u.CreditBalance - 61119.6042005) | Should -BeLessThan 0.001
+        $u.CreditsUnlimited | Should -BeFalse
+        [math]::Round([double]$u.CreditBalance, 0, [MidpointRounding]::AwayFromZero) | Should -Be 61120
+    }
+
+    It 'leaves the credit balance empty when ChatGPT omits it' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ has_credits = $false; unlimited = $false; balance = $null }
+            rate_limit = [pscustomobject]@{
+                primary_window = [pscustomobject]@{ used_percent = 1; limit_window_seconds = 604800; reset_at = 1784488309 }
+            }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $null -eq $u.CreditBalance | Should -BeTrue
+        $u.CreditsUnlimited | Should -BeFalse
+        $u.WeekPct | Should -Be 1
+    }
+
+    It 'keeps a numeric balance and the unlimited flag' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ unlimited = $true; balance = 0 }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $u.CreditBalance | Should -Be 0
+        $u.CreditsUnlimited | Should -BeTrue
+    }
+
+    It 'ignores a credit balance that is not a number' {
+        $obj = [pscustomobject]@{
+            credits = [pscustomobject]@{ balance = 'not-a-balance'; unlimited = $false }
+        }
+
+        $u = ConvertFrom-CodexUsageResponse $obj
+
+        $null -eq $u.CreditBalance | Should -BeTrue
+    }
+}
+
+Describe 'Codex credit display' {
+    It 'paints the ChatGPT credit balance on the Codex tile' {
+        $shell = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\src\Shell.ps1') -Raw
+        $shell | Should -Match 'x:Name="codexCreditsText"'
+        $shell | Should -Match 'Format-CodexCreditsRemaining'
     }
 }

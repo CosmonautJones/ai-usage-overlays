@@ -62,6 +62,7 @@ if (-not $script:CodexSessionsDir) {
 
 $script:CodexStats = $null
 $script:CodexStatsFileCache = @{}
+$script:CodexUnknownModelsLogged = [System.Collections.Generic.HashSet[string]]::new()
 
 # Mirrors Cursor's contract (see Test-ProviderAuthFailed in Config.ps1) so both
 # providers report auth trouble the same way instead of failing silently.
@@ -530,15 +531,15 @@ function Estimate-CodexCost([string]$model, $v) {
 
     if ($model -eq 'default') {
         $tier = 'default'
+    } elseif ($model -and $script:CodexPrices.ContainsKey($model)) {
+        $tier = $model
     } elseif ($model -match '^gpt-5') {
-        if ($script:CodexPrices.ContainsKey($model)) {
-            $tier = $model
-        } else {
-            $tier = 'gpt-5.5'
-        }
+        $tier = 'gpt-5.5'
     } else {
         $tier = 'default'
-        if ($model -and (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
+        # Once per model per process. This runs for every cached record.
+        if ($model -and $script:CodexUnknownModelsLogged.Add($model) -and
+            (Get-Command Write-Log -ErrorAction SilentlyContinue)) {
             Write-Log "Unknown Codex model '$model' - falling back to default pricing (verify prices)"
         }
     }
@@ -656,16 +657,45 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
         ResetsAvailable  = $null
+        CreditBalance    = $null
+        CreditsUnlimited = $false
         PlanType         = $null
         Model            = $currentModel
         LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
 }
 
+# ChatGPT sends credits.balance as a decimal string ("61119.6042005000").
+# Settings shows that balance rounded to a whole credit.
+function ConvertTo-CodexCreditBalance($value) {
+    if ($null -eq $value) { return $null }
+    if ($value -is [string]) {
+        $text = $value.Trim()
+        if ($text -eq '') { return $null }
+        $parsed = 0.0
+        $ok = [double]::TryParse(
+            $text,
+            [Globalization.NumberStyles]::Float,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$parsed)
+        if (-not $ok) { return $null }
+        if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed)) { return $null }
+        return $parsed
+    }
+    try {
+        $n = [double]$value
+    } catch {
+        return $null
+    }
+    if ([double]::IsNaN($n) -or [double]::IsInfinity($n)) { return $null }
+    return $n
+}
+
 # Parse the Codex live usage endpoint (chatgpt.com/backend-api/wham/usage)
 # response into overlay fields. Match explicit five-hour/seven-day durations; the reset
-# credit count backs the "N resets available" line. Pure so it can be tested
-# without a network call.
+# credit count backs the "N resets available" line. credits.balance is the usage-credit
+# balance from Settings > Usage, separate from reset credits.
+# Pure so it can be tested without a network call.
 function ConvertFrom-CodexUsageResponse($obj) {
     if (-not $obj) { return $null }
 
@@ -683,8 +713,10 @@ function ConvertFrom-CodexUsageResponse($obj) {
         })
 
         $weekly = $null; $fiveHour = $null
-        $fiveHour = $withSecs | Where-Object { $_.limit_window_seconds -eq 18000 } | Select-Object -First 1
-        $weekly = $withSecs | Where-Object { $_.limit_window_seconds -eq 604800 } | Select-Object -First 1
+        # Coerce "604800.0" and doubles. Keep the exact 5-hour and 7-day
+        # lengths so a 1-day window (86400) cannot fill the weekly bar.
+        $fiveHour = $withSecs | Where-Object { [long][double]$_.limit_window_seconds -eq 18000 } | Select-Object -First 1
+        $weekly = $withSecs | Where-Object { [long][double]$_.limit_window_seconds -eq 604800 } | Select-Object -First 1
 
         if ($weekly) {
             if ($null -ne $weekly.used_percent) { $weekPct = [double]$weekly.used_percent }
@@ -701,12 +733,21 @@ function ConvertFrom-CodexUsageResponse($obj) {
         $resetsAvailable = [int]$obj.rate_limit_reset_credits.available_count
     }
 
+    $creditBalance = $null
+    $creditsUnlimited = $false
+    if ($obj.credits) {
+        $creditBalance = ConvertTo-CodexCreditBalance $obj.credits.balance
+        if ($obj.credits.unlimited -eq $true) { $creditsUnlimited = $true }
+    }
+
     return @{
         WeekPct          = $weekPct
         WeekResetsAt     = $weekResetsAt
         FiveHourPct      = $fiveHourPct
         FiveHourResetsAt = $fiveHourResetsAt
         ResetsAvailable  = $resetsAvailable
+        CreditBalance    = $creditBalance
+        CreditsUnlimited = $creditsUnlimited
         PlanType         = $obj.plan_type
     }
 }
@@ -780,6 +821,84 @@ function Get-CodexLiveUsage {
     }
 }
 
+# One session is often many rollout files. Each file is parsed from a zero
+# baseline, but a resume or fork copies an earlier cumulative snapshot into
+# its first token event. Adding those files raw counts the copied snapshot
+# again. Drop an opening that another file in the same session already
+# reached, and keep the growth after it. The cache stays per file.
+function Repair-CodexSessionTokenRecords {
+    param($FileRecordLists)
+
+    $files = New-Object System.Collections.Generic.List[object]
+    foreach ($records in @($FileRecordLists)) {
+        $token = New-Object System.Collections.Generic.List[object]
+        $meta = New-Object System.Collections.Generic.List[object]
+        $sid = ''
+        foreach ($r in @($records)) {
+            if (-not $sid -and $r.SessionId) { $sid = [string]$r.SessionId }
+            if (([long]$r.In) -gt 0 -or ([long]$r.Out) -gt 0) { [void]$token.Add($r) }
+            else { [void]$meta.Add($r) }
+        }
+        [void]$files.Add(@{ SessionId = $sid; Token = $token; Meta = $meta })
+    }
+
+    $groups = @{}
+    $groupOrder = New-Object System.Collections.Generic.List[string]
+    foreach ($f in $files) {
+        $key = $f.SessionId
+        if (-not $key) { $key = [guid]::NewGuid().ToString() }
+        if (-not $groups.ContainsKey($key)) {
+            $groups[$key] = New-Object System.Collections.Generic.List[object]
+            [void]$groupOrder.Add($key)
+        }
+        [void]$groups[$key].Add($f)
+    }
+
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($key in $groupOrder) {
+        $group = $groups[$key]
+        $stats = New-Object System.Collections.Generic.List[object]
+        foreach ($f in $group) {
+            $sumIn = [long]0
+            $firstIn = [long]0
+            $has = $f.Token.Count -gt 0
+            if ($has) {
+                $firstIn = [long]$f.Token[0].In
+                foreach ($r in $f.Token) { $sumIn += [long]$r.In }
+            }
+            [void]$stats.Add(@{ File = $f; Has = $has; FirstIn = $firstIn; LastIn = $sumIn })
+        }
+
+        for ($index = 0; $index -lt $stats.Count; $index++) {
+            $s = $stats[$index]
+            $dropOpening = $false
+            $dropAll = $false
+            if ($s.Has) {
+                for ($otherIndex = 0; $otherIndex -lt $stats.Count; $otherIndex++) {
+                    if ($otherIndex -eq $index) { continue }
+                    $o = $stats[$otherIndex]
+                    if (-not $o.Has) { continue }
+                    $inherited = ($o.FirstIn -lt $s.FirstIn) -and ($o.LastIn -ge $s.FirstIn)
+                    $smallerSibling = ($o.FirstIn -eq $s.FirstIn) -and ($o.LastIn -gt $s.LastIn)
+                    if ($inherited -or $smallerSibling) { $dropOpening = $true }
+                    $sameSpan = ($o.FirstIn -eq $s.FirstIn) -and ($o.LastIn -eq $s.LastIn)
+                    if ($sameSpan -and ($o.File.Token.Count -gt $s.File.Token.Count)) { $dropAll = $true }
+                    if ($sameSpan -and ($o.File.Token.Count -eq $s.File.Token.Count) -and ($otherIndex -lt $index)) { $dropAll = $true }
+                }
+            }
+
+            if (-not $dropAll) {
+                $start = 0
+                if ($dropOpening -and $s.File.Token.Count -gt 0) { $start = 1 }
+                for ($i = $start; $i -lt $s.File.Token.Count; $i++) { [void]$out.Add($s.File.Token[$i]) }
+            }
+            foreach ($m in $s.File.Meta) { [void]$out.Add($m) }
+        }
+    }
+
+    return ,$out
+}
+
 function Get-CodexStats {
     $cachePath = Join-Path $script:AppDir 'codex-cache.json'
     Import-CodexStatsFileCache $cachePath
@@ -820,7 +939,7 @@ function Get-CodexStats {
         }
     }
 
-    $allRecords = [System.Collections.Generic.List[object]]::new()
+    $fileRecordLists = [System.Collections.Generic.List[object]]::new()
     $latestRateLimits = $null
     $latestTokenDate = $null
     $activeCache = @{}
@@ -917,9 +1036,7 @@ function Get-CodexStats {
         if ($stopped) { break }
 
         $done = Complete-CodexFileRecords -State $entry.State -FallbackSessionId $file.BaseName -FallbackDate $file.LastWriteTime
-        foreach ($r in $done.Records) {
-            $allRecords.Add($r)
-        }
+        [void]$fileRecordLists.Add($done.Records)
         $fileTokenDate = $done.FileTokenDate
         if ($fileTokenDate -and ((-not $latestTokenDate) -or ($fileTokenDate -gt $latestTokenDate))) {
             $latestTokenDate = $fileTokenDate
@@ -944,7 +1061,8 @@ function Get-CodexStats {
 
     try {
         if ($sessionDirs.Count -gt 0) {
-            $script:CodexStats = Measure-CodexStats $allRecords.ToArray() (Get-Date) $latestRateLimits
+            $folded = Repair-CodexSessionTokenRecords -FileRecordLists $fileRecordLists
+            $script:CodexStats = Measure-CodexStats $folded.ToArray() (Get-Date) $latestRateLimits
         }
     } catch {
         Write-CodexLog "Get-CodexStats: Measure-CodexStats failed - $($_.Exception.Message)"
@@ -964,6 +1082,8 @@ function Get-CodexStats {
             $script:CodexStats.FiveHourPct = $live.FiveHourPct
             $script:CodexStats.FiveHourResetsAt = $live.FiveHourResetsAt
             $script:CodexStats.ResetsAvailable = $live.ResetsAvailable
+            $script:CodexStats.CreditBalance = $live.CreditBalance
+            $script:CodexStats.CreditsUnlimited = [bool]$live.CreditsUnlimited
             if ($live.PlanType) { $script:CodexStats.PlanType = $live.PlanType }
         }
     } catch {

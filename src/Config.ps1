@@ -197,10 +197,21 @@ $script:Prices = @{
     haiku  = @{ in = 1.0;  out = 5.0;  cw = 1.25;  cr = 0.10 }
 }
 
-$script:CodexPricesAsOf = '2026-06-26'
+# Short-context standard rates, developers.openai.com/api/docs/pricing on 2026-10-02.
+# Long-context, fast, and batch multipliers are not applied.
+$script:CodexPricesAsOf = '2026-10-02'
 $script:CodexPrices = @{
-    'gpt-5.5' = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
-    default   = @{ in = 5.00; cachedIn = 0.50; out = 30.00 }
+    'gpt-5.5'      = @{ in = 5.00;  cachedIn = 0.50;  out = 30.00 }
+    'gpt-5.4'      = @{ in = 2.50;  cachedIn = 0.25;  out = 15.00 }
+    'gpt-5.4-mini' = @{ in = 0.75;  cachedIn = 0.075; out = 4.50 }
+    'gpt-5.6-sol'  = @{ in = 4.00;  cachedIn = 0.40;  out = 20.00 }
+    'gpt-5.6-terra'= @{ in = 2.00;  cachedIn = 0.20;  out = 12.00 }
+    'gpt-5.6-luna' = @{ in = 0.20;  cachedIn = 0.02;  out = 1.20 }
+    'gpt-6-astra'  = @{ in = 10.00; cachedIn = 1.00;  out = 50.00 }
+    'gpt-6-sol'    = @{ in = 2.00;  cachedIn = 0.20;  out = 10.00 }
+    'gpt-6.1-sol'  = @{ in = 2.00;  cachedIn = 0.10;  out = 10.00 }
+    'gpt-6-luna'   = @{ in = 0.10;  cachedIn = 0.01;  out = 0.50 }
+    default        = @{ in = 5.00;  cachedIn = 0.50;  out = 30.00 }
 }
 
 # ---------------------------------------------------------------------------

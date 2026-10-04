@@ -81,3 +81,19 @@ Describe 'Remaining-Color' {
         Remaining-Color 100 | Should -Be '#F1F5F9'
     }
 }
+
+Describe 'Format-CodexCreditsRemaining' {
+    It 'rounds a decimal balance the way Settings shows it' {
+        Format-CodexCreditsRemaining '61119.6042005000' $false | Should -Be '61,120 remaining'
+        Format-CodexCreditsRemaining 61902.7572305 $false | Should -Be '61,903 remaining'
+    }
+
+    It 'shows unlimited instead of a number' {
+        Format-CodexCreditsRemaining 0 $true | Should -Be 'unlimited'
+    }
+
+    It 'stays blank when the balance was not sent' {
+        Format-CodexCreditsRemaining $null $false | Should -Be '--'
+        Format-CodexCreditsRemaining 'not-a-balance' $false | Should -Be '--'
+    }
+}
