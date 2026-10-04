@@ -191,6 +191,116 @@ function Sync-ProviderLoginMenuItems {
     }
 }
 
+function Show-OverlayTrayNote {
+    param([string]$Title, [string]$Message)
+    if ($script:notify) {
+        try {
+            $script:notify.ShowBalloonTip(4000, $Title, $Message, [System.Windows.Forms.ToolTipIcon]::Info)
+        } catch { }
+    }
+    if (Get-Command Write-Log -ErrorAction SilentlyContinue) { Write-Log "${Title}: $Message" }
+}
+
+function Sync-ProviderLaunchMenuItems {
+    if (-not $script:launchSavedItems) { return }
+    $folders = $null
+    if ($script:Cfg -and $script:Cfg.Contains('LaunchFolders')) { $folders = $script:Cfg['LaunchFolders'] }
+    foreach ($key in @($script:launchSavedItems.Keys)) {
+        $saved = $script:launchSavedItems[$key]
+        $choose = $null
+        if ($script:launchChooseItems) { $choose = $script:launchChooseItems[$key] }
+        $folder = $null
+        if ($folders -is [System.Collections.IDictionary] -and $folders.Contains($key)) {
+            $folder = [string]$folders[$key]
+        }
+        $ready = (Get-Command Test-LaunchFolderPath -ErrorAction SilentlyContinue) -and (Test-LaunchFolderPath $folder)
+        if ($ready) {
+            $leaf = Get-LaunchFolderLeaf $folder
+            $saved.Text = "Open in $leaf"
+            $saved.ToolTipText = $folder
+            if ($choose) { $choose.Visible = $true }
+        } else {
+            $saved.Text = 'Choose folder...'
+            $saved.ToolTipText = 'Pick a folder. It is remembered for next time.'
+            if ($choose) { $choose.Visible = $false }
+        }
+        $saved.Enabled = $true
+    }
+}
+
+function Invoke-ProviderOpen {
+    param(
+        [Parameter(Mandatory = $true)][string]$Provider,
+        [Parameter(Mandatory = $true)][string]$Mode
+    )
+
+    $key = $Provider.ToLowerInvariant()
+    if ($key -notin @('claude', 'codex', 'grok', 'cursor')) { return }
+    if (-not $script:Cfg) { $script:Cfg = @{} }
+    if (-not ($script:Cfg['LaunchFolders'] -is [System.Collections.IDictionary])) {
+        $script:Cfg['LaunchFolders'] = @{}
+    }
+
+    $folder = $null
+    $modeName = $Mode
+    if ($modeName -eq 'Saved') {
+        if ($script:Cfg['LaunchFolders'].Contains($key)) { $folder = [string]$script:Cfg['LaunchFolders'][$key] }
+        if (-not (Test-LaunchFolderPath $folder)) {
+            $modeName = 'Choose'
+            $folder = $null
+        }
+    }
+    if ($modeName -eq 'Explorer') {
+        $folder = Get-FrontExplorerFolder
+        if (-not (Test-LaunchFolderPath $folder)) {
+            Show-OverlayTrayNote -Title 'Open' -Message 'No File Explorer window is open.'
+            return
+        }
+    }
+    if ($modeName -eq 'Choose') {
+        $initial = $null
+        if ($script:Cfg['LaunchFolders'].Contains($key)) { $initial = [string]$script:Cfg['LaunchFolders'][$key] }
+        $folder = Show-LaunchFolderDialog -Description "Choose a folder for $Provider" -InitialPath $initial
+        if (-not (Test-LaunchFolderPath $folder)) { return }
+    }
+    if (-not (Test-LaunchFolderPath $folder)) {
+        Show-OverlayTrayNote -Title 'Open' -Message 'That folder is not available.'
+        return
+    }
+
+    $target = Resolve-ProviderLaunchTarget $key
+    $cmd = Get-ProviderLaunchCommand -Provider $key -Folder $folder -CliPath $target.CliPath -CursorExe $target.CursorExe -TerminalPath $target.TerminalPath
+    if (-not $cmd.Ok) {
+        $label = (Get-Culture).TextInfo.ToTitleCase($key)
+        $message = if ($cmd.Reason -eq 'not-installed') { "$label is not installed." } else { 'Could not open that folder.' }
+        Show-OverlayTrayNote -Title 'Open' -Message $message
+        return
+    }
+
+    $script:Cfg['LaunchFolders'][$key] = $folder
+    if (Get-Command Save-UnifiedState -ErrorAction SilentlyContinue) { Save-UnifiedState }
+    [void](Start-ProviderLaunchProcess $cmd)
+    Sync-ProviderLaunchMenuItems
+}
+
+function Queue-ProviderOpen {
+    param(
+        [Parameter(Mandatory = $true)][string]$Provider,
+        [Parameter(Mandatory = $true)][string]$Mode
+    )
+
+    $providerName = $Provider
+    $openMode = $Mode
+    $action = {
+        Invoke-ProviderOpen -Provider $providerName -Mode $openMode
+    }.GetNewClosure()
+    if ($script:ctxStrip -and $script:ctxStrip.IsHandleCreated) {
+        [void]$script:ctxStrip.BeginInvoke([Action]$action)
+    } else {
+        & $action
+    }
+}
+
 function Invoke-ManualRefresh {
     if ($script:State) {
         $script:State.Status = 'refreshing'
@@ -845,8 +955,32 @@ foreach ($pair in @(@('Claude','claude'), @('Codex','codex'), @('Cursor','cursor
 }
 [void]$script:ctxStrip.Items.Add($miProviders)
 
-# Log in: spawn a visible CLI (`claude login` / `codex login` / `grok login`).
+# Open: remembered folder, or the front Explorer folder. Cursor opens the folder in the app.
+# Claude, Codex, and Grok open in Windows Terminal when wt.exe is installed.
 Add-Separator
+$miOpen = New-StripItem 'Open' $null
+$script:launchSavedItems = @{}
+$script:launchExplorerItems = @{}
+$script:launchChooseItems = @{}
+foreach ($pair in @(@('Claude','claude'), @('Codex','codex'), @('Grok','grok'), @('Cursor','cursor'))) {
+    $label = $pair[0]
+    $key = $pair[1]
+    $sub = New-StripItem $label $null
+    $saved = New-StripItem 'Choose folder...' ([scriptblock]::Create("Queue-ProviderOpen -Provider '$key' -Mode 'Saved'"))
+    $explorerItem = New-StripItem 'Use Explorer folder' ([scriptblock]::Create("Queue-ProviderOpen -Provider '$key' -Mode 'Explorer'"))
+    $choose = New-StripItem 'Choose another folder...' ([scriptblock]::Create("Queue-ProviderOpen -Provider '$key' -Mode 'Choose'"))
+    $script:launchSavedItems[$key] = $saved
+    $script:launchExplorerItems[$key] = $explorerItem
+    $script:launchChooseItems[$key] = $choose
+    [void]$sub.DropDownItems.Add($saved)
+    [void]$sub.DropDownItems.Add($explorerItem)
+    [void]$sub.DropDownItems.Add($choose)
+    [void]$miOpen.DropDownItems.Add($sub)
+}
+[void]$script:ctxStrip.Items.Add($miOpen)
+Sync-ProviderLaunchMenuItems
+
+# Log in: spawn a visible CLI (`claude login` / `codex login` / `grok login`).
 $miLogin = New-StripItem 'Log in' $null
 foreach ($pair in @(@('Claude','claude'), @('Codex','codex'), @('Grok','grok'))) {
     $provider = $pair[0]
@@ -857,7 +991,7 @@ foreach ($pair in @(@('Claude','claude'), @('Codex','codex'), @('Grok','grok')))
 }
 [void]$script:ctxStrip.Items.Add($miLogin)
 Sync-ProviderLoginMenuItems
-$script:ctxStrip.add_Opening({ Sync-ProviderLoginMenuItems })
+$script:ctxStrip.add_Opening({ Sync-ProviderLoginMenuItems; Sync-ProviderLaunchMenuItems })
 
 # View mode: pinned panel vs Quake-style drop-down on a global hotkey
 $script:viewModeItems = @{}

@@ -1,5 +1,9 @@
 # CodexData.ps1 - Codex session parsing and usage cost estimation
 
+if (-not (Get-Command Add-ModelUsage -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot 'ModelUsage.ps1')
+}
+
 function Get-CodexSessionDirCandidates {
     param([string[]]$WslHomeRoots = @(Get-WslHomeRoots))
 
@@ -569,6 +573,7 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
     $weekResetsAt = $null
     $currentModel = $null
     $latestModelDate = $null
+    $models = @{}
 
     foreach ($r in $records) {
         $v = @{
@@ -576,10 +581,12 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
             cachedInputTokens = [long]$r.CachedIn
             outputTokens      = [long]$r.Out
         }
-        $val  += Estimate-CodexCost $r.Model $v
+        $cost = Estimate-CodexCost $r.Model $v
+        $val  += $cost
         $tin  += [long]$r.In
         $tout += [long]$r.Out
         [void]$sessions.Add([string]$r.SessionId)
+        Add-ModelUsage $models ([string]$r.Model) ([long]$r.In) ([long]$r.Out) ([long]$r.CachedIn) ([long]$r.In) $cost
 
         $messageDates = if ($null -eq $r.MessageDates) { @() } else { @($r.MessageDates) }
         if ($null -eq $r.MessageDates) {
@@ -661,6 +668,7 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
         CreditsUnlimited = $false
         PlanType         = $null
         Model            = $currentModel
+        Models           = (Get-SortedModelRows $models)
         LastComputed     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
 }

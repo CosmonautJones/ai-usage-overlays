@@ -375,6 +375,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase,
 . (Join-Path $script:AppDir 'src\CursorData.ps1')
 . (Join-Path $script:AppDir 'src\GrokData.ps1')
 . (Join-Path $script:AppDir 'src\ProviderLogin.ps1')
+. (Join-Path $script:AppDir 'src\ProviderLaunch.ps1')
 . (Join-Path $script:AppDir 'src\ProviderVersions.ps1')
 . (Join-Path $script:AppDir 'src\Update.ps1')
 . (Join-Path $script:AppDir 'src\ProviderLinks.ps1')
@@ -772,6 +773,9 @@ function Complete-RefreshJobs {
     if ($completedAny -and (-not $script:pollJobs -or $script:pollJobs.Count -eq 0)) {
         if (Get-Command Complete-UnifiedHistoryPoll -ErrorAction SilentlyContinue) {
             Complete-UnifiedHistoryPoll
+        }
+        if (Get-Command Write-UsageReport -ErrorAction SilentlyContinue) {
+            try { Write-UsageReport } catch { Write-Log "Write-UsageReport failed: $($_.Exception.Message)" }
         }
         Update-AllSections
         Resize-ToContent

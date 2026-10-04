@@ -156,6 +156,10 @@ function Render-QuakeClaude($tb) {
     $s = $script:Stats
     if ($s) {
         Add-QuakeStatLine $tb 'tokens' ('{0} in / {1} out' -f (Format-QuakeNum ([double]$s.InTokens)), (Format-QuakeNum ([double]$s.OutTokens)))
+        if (Get-Command Format-TopModelLine -ErrorAction SilentlyContinue) {
+            $top = Format-TopModelLine $s
+            if ($top) { Add-QuakeStatLine $tb 'top' $top }
+        }
         Add-QuakeStatLine $tb 'today' ('{0} tok  {1} msgs' -f (Format-QuakeNum ([double]$s.TodayTok)), [int]$s.TodayMsg)
         Add-QuakeStatLine $tb 'lifetime' ('{0} sessions  {1} msgs' -f [int]$s.Sessions, (Format-QuakeNum ([double]$s.Messages)))
         Add-QuakeStatLine $tb 'est cost' ('~${0:N0} all-time' -f [double]$s.ValueUSD)
@@ -180,6 +184,10 @@ function Render-QuakeCodex($tb) {
     Add-QuakeGaugeLine $tb 'WEEKLY' $s.WeekPct $s.WeekResetsAt
     Add-QuakeStatLine $tb 'credits' (Format-CodexCreditsRemaining $s.CreditBalance $s.CreditsUnlimited)
     Add-QuakeStatLine $tb 'tokens' ('{0} in / {1} out' -f (Format-QuakeNum ([double]$s.InTokens)), (Format-QuakeNum ([double]$s.OutTokens)))
+    if (Get-Command Format-TopModelLine -ErrorAction SilentlyContinue) {
+        $top = Format-TopModelLine $s
+        if ($top) { Add-QuakeStatLine $tb 'top' $top }
+    }
     Add-QuakeStatLine $tb 'today' ('{0} tok  {1} msgs' -f (Format-QuakeNum ([double]$s.TodayTok)), [int]$s.TodayMsg)
     Add-QuakeStatLine $tb 'lifetime' ('{0} sessions  {1} msgs' -f [int]$s.Sessions, (Format-QuakeNum ([double]$s.Messages)))
     Add-QuakeStatLine $tb 'est cost' ('~${0:N0} all-time' -f [double]$s.ValueUSD)

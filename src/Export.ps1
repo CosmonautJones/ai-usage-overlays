@@ -1,6 +1,11 @@
 # Export.ps1 - clipboard lines and JSON snapshot objects from in-memory payloads.
 # No WPF / clipboard I/O. HUD Copy-Stats and -Json both consume these helpers.
 
+$usageReportPath = Join-Path $PSScriptRoot 'UsageReport.ps1'
+if ((Test-Path -LiteralPath $usageReportPath) -and -not (Get-Command Format-TopModelLine -ErrorAction SilentlyContinue)) {
+    . $usageReportPath
+}
+
 function Get-ExportNote {
     param($Obj, [string]$Name)
 
@@ -90,7 +95,7 @@ function Get-ClaudeQuotaStatLines {
 }
 
 function Get-ClaudeExportLines {
-    param($Identity, $Usage, $Stats)
+    param($Identity, $Usage, $Stats, [int]$ModelDetailLimit = 8)
 
     $lines = [System.Collections.Generic.List[string]]::new()
     $display = Get-ExportNote $Identity 'Display'
@@ -113,12 +118,19 @@ function Get-ClaudeExportLines {
         $lines.Add(('Claude today: {0} tokens / {1} msgs' -f (Fmt-Tok $todayTok), $todayMsg))
         $lines.Add(('Claude today after-hours: {0} tokens / {1} msgs' -f (Fmt-Tok $afterTok), $afterMsg))
         $lines.Add(('Claude lifetime: {0} sessions / {1} msgs' -f $sessions, (Fmt-Tok $messages)))
+        if (Get-Command Format-TopModelLine -ErrorAction SilentlyContinue) {
+            $top = Format-TopModelLine $Stats
+            if ($top) { $lines.Add("Claude top model: $top") }
+            foreach ($line in @(Get-ModelUsageExportLines -Stats $Stats -Label 'Claude' -Limit $ModelDetailLimit)) {
+                $lines.Add([string]$line)
+            }
+        }
     }
     return @($lines)
 }
 
 function Get-CodexExportLines {
-    param($Stats)
+    param($Stats, [int]$ModelDetailLimit = 8)
 
     if (-not $Stats) { return @() }
 
@@ -149,6 +161,13 @@ function Get-CodexExportLines {
     $lines.Add(('Codex today: {0} tokens / {1} msgs' -f (Fmt-Tok $todayTok), $todayMsg))
     $lines.Add(('Codex today after-hours: {0} tokens / {1} msgs' -f (Fmt-Tok $afterTok), $afterMsg))
     $lines.Add(('Codex lifetime: {0} sessions / {1} msgs' -f $sessions, (Fmt-Tok $messages)))
+    if (Get-Command Format-TopModelLine -ErrorAction SilentlyContinue) {
+        $top = Format-TopModelLine $Stats
+        if ($top) { $lines.Add("Codex top model: $top") }
+        foreach ($line in @(Get-ModelUsageExportLines -Stats $Stats -Label 'Codex' -Limit $ModelDetailLimit)) {
+            $lines.Add([string]$line)
+        }
+    }
     return @($lines)
 }
 
@@ -240,7 +259,8 @@ function Get-UnifiedExportLines {
         $CursorSummary,
         $CursorLocal,
         $GrokUsage,
-        $Sections
+        $Sections,
+        [int]$ModelDetailLimit = 8
     )
 
     $header = 'AI Usage Overlay'
@@ -251,12 +271,12 @@ function Get-UnifiedExportLines {
     $lines.Add($header)
 
     if (Test-ExportSectionIncluded $Sections 'claude') {
-        foreach ($line in @(Get-ClaudeExportLines -Identity $ClaudeIdentity -Usage $ClaudeUsage -Stats $ClaudeStats)) {
+        foreach ($line in @(Get-ClaudeExportLines -Identity $ClaudeIdentity -Usage $ClaudeUsage -Stats $ClaudeStats -ModelDetailLimit $ModelDetailLimit)) {
             $lines.Add($line)
         }
     }
     if (Test-ExportSectionIncluded $Sections 'codex') {
-        foreach ($line in @(Get-CodexExportLines -Stats $CodexStats)) {
+        foreach ($line in @(Get-CodexExportLines -Stats $CodexStats -ModelDetailLimit $ModelDetailLimit)) {
             $lines.Add($line)
         }
     }

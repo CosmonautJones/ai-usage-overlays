@@ -356,6 +356,14 @@ $xaml = @'
               </Grid>
               <Grid Margin="0,0,0,1">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="TOP" Foreground="#7BA8C8"
+                           FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" x:Name="claudeTopText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="Lifetime model mix from local Claude sessions."/>
+              </Grid>
+              <Grid Margin="0,0,0,1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="TODAY" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" x:Name="todayText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
@@ -552,6 +560,14 @@ $xaml = @'
               <TextBlock Grid.Column="0" Text="TOKENS" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" x:Name="codexTokText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"/>
+            </Grid>
+            <Grid Margin="0,0,0,1">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="TOP" Foreground="#7BA8C8"
+                         FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="codexTopText" Text="--" Foreground="#94A3B8" FontSize="12" FontFamily="Consolas"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip="Lifetime model mix from local Codex sessions."/>
             </Grid>
             <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1486,6 +1502,24 @@ function Toggle-Section([string]$key) {
 # Update-ClaudeSection - ports Ui.ps1 Update-UI body (bars, stats, sparklines),
 # minus the chrome dot/time (now global). Reads $script:State/$script:Stats.
 # ---------------------------------------------------------------------------
+function Set-TopModelText {
+    param(
+        [string]$ElementName,
+        $Stats
+    )
+
+    $el = $script:window.FindName($ElementName)
+    if (-not $el) { return }
+    if (-not $Stats -or -not (Get-Command Format-TopModelLine -ErrorAction SilentlyContinue)) {
+        $el.Text = '--'
+        return
+    }
+    $line = Format-TopModelLine $Stats
+    $el.Text = if ($line) { $line } else { '--' }
+    $tip = Format-TopModelTooltip $Stats
+    if ($tip) { $el.ToolTip = $tip }
+}
+
 function Update-ClaudeSection {
     $identityText = $script:window.FindName('claudeIdentityText')
     if ($identityText) {
@@ -1508,6 +1542,7 @@ function Update-ClaudeSection {
     if ($s) {
         $script:window.FindName('valText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
         $script:window.FindName('tokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))
+        Set-TopModelText 'claudeTopText' $s
         $script:window.FindName('todayText').Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayTok), $s.TodayMsg)
         $afterHoursText = $script:window.FindName('afterHoursText')
         if ($afterHoursText) { $afterHoursText.Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayAfterHoursTok), $s.TodayAfterHoursMsg) }
@@ -1673,6 +1708,7 @@ function Update-CodexSection {
         $cr = $script:window.FindName('codexResetsText'); if ($cr) { $cr.Text = '--' }
         $cc = $script:window.FindName('codexCreditsText'); if ($cc) { $cc.Text = '--' }
         $tt = $script:window.FindName('codexTokText'); if ($tt) { $tt.Text = '--' }
+        Set-TopModelText 'codexTopText' $null
         $cv = $script:window.FindName('codexValText'); if ($cv) { $cv.Text = '--' }
         $ct = $script:window.FindName('codexTodayText'); if ($ct) { $ct.Text = '--' }
         $ca = $script:window.FindName('codexAfterHoursText'); if ($ca) { $ca.Text = '--' }
@@ -1727,6 +1763,7 @@ function Update-CodexSection {
     }
     $script:window.FindName('codexValText').Text   = ('~{0} all-time' -f (Fmt-Money $s.ValueUSD))
     $script:window.FindName('codexTokText').Text   = ('{0} in / {1} out' -f (Fmt-Tok $s.InTokens), (Fmt-Tok $s.OutTokens))
+    Set-TopModelText 'codexTopText' $s
     $script:window.FindName('codexTodayText').Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayTok), $s.TodayMsg)
     $codexAfterHoursText = $script:window.FindName('codexAfterHoursText')
     if ($codexAfterHoursText) { $codexAfterHoursText.Text = ('{0} tok  {1} msgs' -f (Fmt-Tok $s.TodayAfterHoursTok), $s.TodayAfterHoursMsg) }

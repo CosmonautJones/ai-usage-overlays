@@ -1,5 +1,9 @@
 # Data.ps1 - data fetchers: Get-Usage, Get-Stats, and the Write-Log diagnostic helper
 
+if (-not (Get-Command Add-ModelUsage -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot 'ModelUsage.ps1')
+}
+
 function Write-Log {
     param([string]$Message)
     try {
@@ -706,6 +710,7 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
     $tMsg = 0; $tTok = 0L
     $afterHoursMsg = 0; $afterHoursTok = 0L
+    $models = @{}
 
     foreach ($r in $records) {
         $v = @{
@@ -714,10 +719,13 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
             cacheCreationInputTokens = $r.CacheW
             cacheReadInputTokens     = $r.CacheR
         }
-        $val  += Estimate-Cost $r.Model $v
+        $cost = Estimate-Cost $r.Model $v
+        $val  += $cost
         $tin  += [long]$r.In
         $tout += [long]$r.Out
         [void]$sessions.Add([string]$r.SessionId)
+        $cacheBase = [long]$r.In + [long]$r.CacheW + [long]$r.CacheR
+        Add-ModelUsage $models ([string]$r.Model) ([long]$r.In) ([long]$r.Out) ([long]$r.CacheR) $cacheBase $cost
 
         if ($r.Date.Date -eq $today.Date) {
             $tMsg++
@@ -739,6 +747,7 @@ function Measure-Stats([object[]]$records, [datetime]$today) {
         TodayTok     = $tTok
         TodayAfterHoursMsg = $afterHoursMsg
         TodayAfterHoursTok = $afterHoursTok
+        Models       = (Get-SortedModelRows $models)
         LastComputed = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     }
 }

@@ -28,6 +28,25 @@ $script:UnifiedCfgDefaults = @{
     DropdownMonitor = 'Primary'      # 'Primary' | 'Active' | a Screen DeviceName
     DropdownOpacity = 0.85
     DropdownHideOnFocusLoss = $false
+    LaunchFolders = $null
+}
+
+function ConvertTo-LaunchFoldersMap($value) {
+    $map = @{}
+    foreach ($key in @('claude', 'codex', 'grok', 'cursor')) {
+        $raw = $null
+        if ($null -eq $value) { continue }
+        if ($value -is [System.Collections.IDictionary]) {
+            if ($value.Contains($key)) { $raw = $value[$key] }
+        } else {
+            $prop = $value.PSObject.Properties[$key]
+            if ($prop) { $raw = $prop.Value }
+        }
+        if ($null -eq $raw) { continue }
+        $text = ([string]$raw).Trim()
+        if ($text) { $map[$key] = $text }
+    }
+    return $map
 }
 
 function ConvertTo-UnifiedSectionsMap($value) {
@@ -84,6 +103,7 @@ function Initialize-UnifiedCfg {
         }
     }
     $script:Cfg['Sections'] = ConvertTo-UnifiedSectionsMap $script:Cfg['Sections']
+    $script:Cfg['LaunchFolders'] = ConvertTo-LaunchFoldersMap $script:Cfg['LaunchFolders']
 }
 
 Initialize-UnifiedCfg
@@ -125,7 +145,7 @@ function Load-UnifiedState {
         if (-not (Test-Path $script:StatePath)) { return }
 
         $s = Get-Content $script:StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion', 'ViewMode', 'DropdownHotkey', 'ToggleOverlayHotkey', 'RefreshHotkey', 'DropdownMonitor', 'DropdownOpacity', 'DropdownHideOnFocusLoss')) {
+        foreach ($key in @('Left', 'Top', 'Opacity', 'StartHidden', 'ShowStats', 'Compact', 'Theme', 'ShowAlerts', 'ShowGraph', 'AutoCheckUpdates', 'LastUpdateCheckAt', 'LastNotifiedUpdateVersion', 'ViewMode', 'DropdownHotkey', 'ToggleOverlayHotkey', 'RefreshHotkey', 'DropdownMonitor', 'DropdownOpacity', 'DropdownHideOnFocusLoss', 'LaunchFolders')) {
             $prop = $s.PSObject.Properties[$key]
             if ($prop -and $null -ne $prop.Value) { $script:Cfg[$key] = $prop.Value }
         }
@@ -414,6 +434,7 @@ function Get-OverlayPersistedSettingKeys {
         'DropdownHideOnFocusLoss'
         'Left'
         'Top'
+        'LaunchFolders'
     )
 }
 
