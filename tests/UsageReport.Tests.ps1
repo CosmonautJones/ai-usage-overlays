@@ -45,6 +45,17 @@ Describe 'Lifetime model rollup' {
         ($lines -join "`n") | Should -Match '91% of input'
     }
 
+    It 'drops an empty synthetic model and keeps a real one' {
+        $records = @(
+            @{ Model='<synthetic>'; Date=[datetime]'2026-06-10'; In=0L; Out=0L; CacheW=0L; CacheR=0L; SessionId='s'; Key='s' }
+            @{ Model='claude-opus-4-8'; Date=[datetime]'2026-06-10'; In=10L; Out=2L; CacheW=0L; CacheR=0L; SessionId='a'; Key='a' }
+        )
+        $s = Measure-Stats $records ([datetime]'2026-06-10')
+        @($s.Models).Count | Should -Be 1
+        $s.Models[0].Name | Should -Be 'claude-opus-4-8'
+        @(Get-ModelUsageRows $s).Count | Should -Be 1
+    }
+
     It 'returns no model rows for an empty log' {
         $s = Measure-Stats @() ([datetime]'2026-06-10')
         @($s.Models).Count | Should -Be 0

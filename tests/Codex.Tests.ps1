@@ -299,6 +299,52 @@ Describe 'Get-CodexStats' {
         $script:CodexStats.TodayMsg | Should -Be 3
     }
 
+    It 'counts response_item user turns once and ignores assistant and compacted copies' {
+        $baseTime = (Get-Date).Date.AddHours(13)
+        $tsMeta = New-TestTimestamp $baseTime
+        $tsUser = New-TestTimestamp ($baseTime.AddMinutes(1))
+        $tsAssistant = New-TestTimestamp ($baseTime.AddMinutes(2))
+        $tsToken = New-TestTimestamp ($baseTime.AddMinutes(3))
+
+        Write-CodexFixture '2026\06\10\response-item-user.jsonl' @(
+            @{ timestamp=$tsMeta; type='session_meta'; payload=@{ session_id='resp-user'; timestamp=$tsMeta } }
+            @{
+                timestamp = $tsUser
+                type      = 'response_item'
+                payload   = @{ type = 'message'; role = 'user'; id = 'msg-user-1'; content = 'hello' }
+            }
+            @{
+                timestamp = $tsAssistant
+                type      = 'response_item'
+                payload   = @{ type = 'message'; role = 'assistant'; id = 'msg-asst-1'; content = 'hi' }
+            }
+            @{
+                timestamp = $tsUser
+                type      = 'compacted'
+                payload   = @{ retained = @{ role = 'user'; id = 'msg-user-1' } }
+            }
+            (New-CodexTokenEvent $tsToken 100 10 20)
+        ) | Out-Null
+
+        Get-CodexStats
+        $script:CodexStats.Messages | Should -Be 1
+        $script:CodexStats.TodayMsg | Should -Be 1
+
+        Get-CodexStats
+        $script:CodexStats.Messages | Should -Be 1
+
+        foreach ($key in @($script:CodexStatsFileCache.Keys)) {
+            $script:CodexStatsFileCache[$key].MessageScanOffset = 0
+            $script:CodexStatsFileCache[$key].State.ResponseMessages.Clear()
+        }
+        Export-CodexStatsFileCache (Join-Path $script:AppDir 'codex-cache.json')
+        $script:CodexStats = $null
+
+        Get-CodexStats
+        $script:CodexStats.Messages | Should -Be 1
+        $script:CodexStats.TodayMsg | Should -Be 1
+    }
+
     It 'parses rate limits from the real event_msg payload shape' {
         $baseTime = (Get-Date).Date.AddHours(11)
         $tsMeta = New-TestTimestamp $baseTime

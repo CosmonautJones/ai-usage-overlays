@@ -262,8 +262,8 @@ $xaml = @'
                          FontSize="9" FontFamily="Bahnschrift SemiBold" Margin="0,1,0,0"/>
             </StackPanel>
 
-            <!-- Fable metric -->
-            <StackPanel Margin="0,0,0,6">
+            <!-- Fable metric. Hidden until a plan actually returns that window. -->
+            <StackPanel x:Name="fabRow" Margin="0,0,0,6" Visibility="Collapsed">
               <Grid Margin="0,0,0,2">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
@@ -340,7 +340,8 @@ $xaml = @'
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
                            FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" x:Name="valText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
+                <TextBlock Grid.Column="1" x:Name="valText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"
+                         ToolTip="Short-context API estimate, not the subscription bill."/>
               </Grid>
               <Grid x:Name="extraRow" Margin="0,0,0,1" Visibility="Collapsed">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -418,7 +419,7 @@ $xaml = @'
                 <Polyline x:Name="weekSparkC" Stroke="#FB923C" StrokeThickness="1.5" StrokeLineJoin="Round"/>
               </Canvas>
             </StackPanel>
-            <Grid Margin="0,0,0,7">
+            <Grid x:Name="fabRowC" Margin="0,0,0,7" Visibility="Collapsed">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
@@ -553,7 +554,8 @@ $xaml = @'
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="EST. COST" Foreground="#7BA8C8"
                          FontSize="10" FontFamily="Bahnschrift SemiBold" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" x:Name="codexValText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"/>
+              <TextBlock Grid.Column="1" x:Name="codexValText" Text="--" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas"
+                         ToolTip="Short-context API estimate, not the subscription bill."/>
             </Grid>
             <Grid Margin="0,0,0,1">
               <Grid.ColumnDefinitions><ColumnDefinition Width="78"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -1593,9 +1595,17 @@ function Update-ClaudeSection {
     Set-Spark 'weekSparkC' 'weekSparkCanvasC' 'seven_day' 'weekSparkRowC'
     if ($hasAlert) { Check-Alert 'seven_day' $d.seven_day.utilization }
 
-    Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab -ResetOverride $resetOverride
-    Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization -AccentFg $script:AccentFab
-    if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
+    $showFab = $d.seven_day_fable -and ($null -ne $d.seven_day_fable.utilization)
+    $fabVis = if ($showFab) { [System.Windows.Visibility]::Visible } else { [System.Windows.Visibility]::Collapsed }
+    foreach ($fabName in @('fabRow', 'fabRowC')) {
+        $fabEl = $script:window.FindName($fabName)
+        if ($fabEl) { $fabEl.Visibility = $fabVis }
+    }
+    if ($showFab) {
+        Set-SectionBar 'fabBar' 'fabPct' 'fabSub' 'fabReset' $d.seven_day_fable.utilization $d.seven_day_fable.resets_at -AccentFg $script:AccentFab -ResetOverride $resetOverride
+        Set-CompactBar 'fabBarC' 'fabPctC' $d.seven_day_fable.utilization -AccentFg $script:AccentFab
+        if ($hasAlert) { Check-Alert 'seven_day_fable' $d.seven_day_fable.utilization }
+    }
 
     if ($d.seven_day_opus) {
         $script:window.FindName('opusRow').Visibility = [System.Windows.Visibility]::Visible

@@ -29,6 +29,8 @@ function Get-SortedModelRows($Buckets) {
     if ($Buckets) {
         foreach ($name in @($Buckets.Keys)) {
             $b = $Buckets[$name]
+            # Claude writes an empty <synthetic> bucket. It is not a model the user picked.
+            if ($b.Name -eq '<synthetic>' -and $b.In -eq 0 -and $b.Out -eq 0 -and $b.Cached -eq 0) { continue }
             $rows.Add([pscustomobject]@{
                 Name      = [string]$b.Name
                 In        = [long]$b.In

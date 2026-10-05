@@ -12,8 +12,8 @@ Built as a TravOS portfolio piece. Each provider is an independent adapter: one 
 
 | Provider | Live | Local / extra |
 | --- | --- | --- |
-| **Claude Code** | 5-hour, weekly, optional Fable/Opus windows | Identity, estimated cost, tokens, sessions |
-| **Codex** | Weekly % + reset credits; usage-credit balance when ChatGPT sends one; **5-hour % when ChatGPT returns it** | Tokens, cost, today / after-hours, lifetime sessions |
+| **Claude Code** | 5-hour, weekly, optional Fable/Opus windows | Identity, API-estimate cost, tokens, sessions, top model and cache rate |
+| **Codex** | Weekly % + reset credits; usage-credit balance when ChatGPT sends one; **5-hour % when ChatGPT returns it** | Tokens, API-estimate cost, today / after-hours, lifetime sessions and messages, top model and cache rate |
 | **Cursor** | **Cursor Models** % and plan used/limit from Plan & Usage, **Other Models** %, On-demand Off/$ | 30-day / today edits, top model, AI lines when analytics returns them (otherwise `--`) |
 | **Grok** | SuperGrok / CLI weekly % and reset time; available one-time usage resets | Reset expiry on hover; plan / prepaid only if xAI sends them |
 
@@ -78,6 +78,8 @@ Footer defaults to the TravOS slab-T. Right-click the tray → **Set footer bran
 | --- | --- |
 | Show / hide overlay | Left-click the **AI** tray icon |
 | Log in a provider | Right-click → Log in |
+| Open a provider in a folder | Right-click → **Open**. The first choice is remembered. **Use Explorer folder** opens whatever File Explorer is showing. Cursor opens that folder in the app. |
+| Lifetime model mix | The **TOP** row on Claude and Codex. Hover for share, output per input, and the API-estimate note. The full list is `%LOCALAPPDATA%\AIUsageOverlay\usage-report.txt`. |
 | Official platform pages | Right-click → **Platforms** → Claude / Codex / Cursor / Grok |
 | Copy stats | Right-click → Copy stats to clipboard |
 | Set / reset footer mark | Right-click → Brand → Set footer brand… / Reset TravOS mark |

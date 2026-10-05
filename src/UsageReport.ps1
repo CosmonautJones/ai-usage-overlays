@@ -24,7 +24,15 @@ function Get-ModelUsageRows($Stats) {
     foreach ($row in @($raw)) {
         if ($null -eq $row) { continue }
         $name = Get-UsageNote $row 'Name'
-        if ($name) { $items.Add($row) }
+        if (-not $name) { continue }
+        # An empty synthetic row is bookkeeping, not a model to show a judge.
+        if ($name -eq '<synthetic>') {
+            $in = Get-UsageNote $row 'In'
+            $out = Get-UsageNote $row 'Out'
+            $cached = Get-UsageNote $row 'Cached'
+            if ([int64]$in -eq 0 -and [int64]$out -eq 0 -and [int64]$cached -eq 0) { continue }
+        }
+        $items.Add($row)
     }
     if ($items.Count -eq 0) { return @() }
     return $items.ToArray()

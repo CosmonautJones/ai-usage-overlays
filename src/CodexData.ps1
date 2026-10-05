@@ -290,7 +290,10 @@ function New-CodexParseState {
         LastModel      = $null
         SessionId      = $null
         SessionDate    = $null
-        MessageDates   = [System.Collections.Generic.List[datetime]]::new()
+        MessageDates      = [System.Collections.Generic.List[datetime]]::new()
+        # response_item user turns, separate from legacy event_msg dates so a
+        # backfill cannot count the same turn twice.
+        ResponseMessages  = [System.Collections.Generic.List[object]]::new()
         LastTokenDate  = $null
         LastRateLimits = $null
         TokenRecords   = [System.Collections.Generic.List[object]]::new()
@@ -402,8 +405,9 @@ function Complete-CodexFileRecords {
             In           = 0L
             CachedIn     = 0L
             Out          = 0L
-            SessionId    = [string]$sessionName
-            MessageDates = $State.MessageDates.ToArray()
+            SessionId        = [string]$sessionName
+            MessageDates     = $State.MessageDates.ToArray()
+            ResponseMessages = $(if ($State.ResponseMessages) { $State.ResponseMessages.ToArray() } else { @() })
         })
     }
 
@@ -437,6 +441,16 @@ function ConvertFrom-CodexCachedState {
         $cd = Convert-CodexCacheDate $d
         if ($cd) { [void]$state.MessageDates.Add($cd) }
     }
+    if (-not $state.ResponseMessages) {
+        $state.ResponseMessages = [System.Collections.Generic.List[object]]::new()
+    }
+    foreach ($m in @($Saved.ResponseMessages)) {
+        if (-not $m) { continue }
+        $id = [string]$m.Id
+        $cd = Convert-CodexCacheDate $m.Date
+        if (-not $id -or -not $cd) { continue }
+        [void]$state.ResponseMessages.Add(@{ Id = $id; Date = $cd })
+    }
     $state.LastTokenDate = Convert-CodexCacheDate $Saved.LastTokenDate
     $state.LastRateLimits = $Saved.LastRateLimits
     foreach ($r in (Convert-CodexCacheRecords $Saved.TokenRecords)) { $state.TokenRecords.Add($r) }
@@ -459,13 +473,18 @@ function Import-CodexStatsFileCache {
             $entry = $prop.Value
             if (-not $entry -or -not $entry.Stamp -or $entry.CacheVersion -ne $script:CodexCacheVersion) { continue }
 
+            $messageOffset = 0L
+            if ($entry.PSObject.Properties['MessageScanOffset'] -and $null -ne $entry.MessageScanOffset) {
+                $messageOffset = [long]$entry.MessageScanOffset
+            }
             $loaded[$prop.Name] = @{
-                CacheVersion = $script:CodexCacheVersion
-                Stamp        = [string]$entry.Stamp
-                Offset       = [long]$entry.Offset
-                HeadLength   = [int]$entry.HeadLength
-                HeadHash     = [string]$entry.HeadHash
-                State        = ConvertFrom-CodexCachedState $entry.State
+                CacheVersion      = $script:CodexCacheVersion
+                Stamp             = [string]$entry.Stamp
+                Offset            = [long]$entry.Offset
+                MessageScanOffset = $messageOffset
+                HeadLength        = [int]$entry.HeadLength
+                HeadHash          = [string]$entry.HeadHash
+                State             = ConvertFrom-CodexCachedState $entry.State
             }
         }
 
@@ -566,6 +585,7 @@ function Estimate-CodexCost([string]$model, $v) {
 function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = $null) {
     $val = [decimal]0; $tin = 0L; $tout = 0L
     $sessions = [System.Collections.Generic.HashSet[string]]::new()
+    $seenMessageIds = [System.Collections.Generic.HashSet[string]]::new()
     $msgCount = 0; $tMsg = 0; $tTok = 0L; $afterHoursMsg = 0; $afterHoursTok = 0L
     $fiveHourPct = $null
     $fiveHourResetsAt = $null
@@ -597,6 +617,26 @@ function Measure-CodexStats([object[]]$records, [datetime]$today, $rateLimits = 
             if ($messageDate.Date -eq $today.Date) {
                 $tMsg++
                 if (Test-CodexUsageAfterHours $messageDate) { $afterHoursMsg++ }
+            }
+        }
+
+        # A copied rollout repeats the same response_item id. Count the id once.
+        $responseMessages = $null
+        if ($r -is [System.Collections.IDictionary] -and $r.Contains('ResponseMessages')) {
+            $responseMessages = $r['ResponseMessages']
+        }
+        if ($responseMessages) {
+            foreach ($message in @($responseMessages)) {
+                if (-not $message) { continue }
+                $id = [string]$message.Id
+                if (-not $id) { continue }
+                if (-not $seenMessageIds.Add($id)) { continue }
+                $msgCount++
+                $messageDate = $message.Date
+                if ($messageDate -and $messageDate.Date -eq $today.Date) {
+                    $tMsg++
+                    if (Test-CodexUsageAfterHours $messageDate) { $afterHoursMsg++ }
+                }
             }
         }
 
@@ -907,6 +947,65 @@ function Repair-CodexSessionTokenRecords {
     return ,$out
 }
 
+# A response_item user turn starts with type near the front of the line.
+# Compacted snapshots also contain "role":"user" deeper in the line; those are
+# copies, not new turns, and can be many megabytes.
+function Test-CodexResponseItemHead([string]$Line) {
+    if (-not $Line) { return $false }
+    $n = [Math]::Min(400, $Line.Length)
+    $head = $Line.Substring(0, $n)
+    return ($head.IndexOf('"type":"response_item"', [System.StringComparison]::Ordinal) -ge 0) -or
+           ($head.IndexOf('"type": "response_item"', [System.StringComparison]::Ordinal) -ge 0)
+}
+
+# Counts current-format user turns without re-reading token events.
+# MessageScanOffset remembers how far this scan got, including on a warm token cache.
+function Add-CodexResponseItemUserMessages {
+    param(
+        [string]$Path,
+        $State,
+        [long]$Offset = 0,
+        $Budget = $null
+    )
+
+    if (-not $State.ResponseMessages) {
+        $State.ResponseMessages = [System.Collections.Generic.List[object]]::new()
+    }
+
+    $next = $Offset
+    $readAny = $false
+    $stopped = $false
+    $needles = @('"role":"user"', '"role": "user"')
+    while ($true) {
+        $read = Read-CodexNewLines -Path $Path -Offset $next -MustContain $needles -MaxBytes $script:CodexSliceBytes
+        $readAny = $true
+        foreach ($line in @($read.Lines)) {
+            if (-not (Test-CodexResponseItemHead $line)) { continue }
+            try {
+                $o = ConvertFrom-Json -InputObject $line -ErrorAction Stop
+            } catch {
+                continue
+            }
+            if ($o.type -ne 'response_item') { continue }
+            if ($o.payload.type -ne 'message') { continue }
+            if ([string]$o.payload.role -ne 'user') { continue }
+            $id = [string]$o.payload.id
+            if (-not $id) { continue }
+            $msgDate = Convert-CodexTimestamp $o.timestamp
+            if (-not $msgDate) { continue }
+            [void]$State.ResponseMessages.Add(@{ Id = $id; Date = $msgDate })
+        }
+        $next = [long]$read.NextOffset
+        if ($read.AtEnd) { break }
+        if ($Budget -and $Budget.Elapsed.TotalSeconds -ge $script:CodexParseBudgetSeconds) {
+            $stopped = $true
+            break
+        }
+    }
+
+    return @{ NextOffset = $next; ReadAny = $readAny; Stopped = $stopped }
+}
+
 function Get-CodexStats {
     $cachePath = Join-Path $script:AppDir 'codex-cache.json'
     Import-CodexStatsFileCache $cachePath
@@ -1030,13 +1129,40 @@ function Get-CodexStats {
             $entryStamp = $stamp
             if ($stopped) { $entryStamp = 'partial' }
 
+            # Keep a finished message scan when the token parse only resumes an append.
+            # A replaced file gets a new state, so its scan starts over.
+            $messageOffset = 0L
+            if ($cached -and ($state -eq $cached.State) -and $null -ne $cached.MessageScanOffset) {
+                $messageOffset = [long]$cached.MessageScanOffset
+            }
+
             $entry = @{
-                CacheVersion = $script:CodexCacheVersion
-                Stamp        = $entryStamp
-                Offset       = $offset
-                HeadLength   = $headLength
-                HeadHash     = $headHash
-                State        = $state
+                CacheVersion      = $script:CodexCacheVersion
+                Stamp             = $entryStamp
+                Offset            = $offset
+                MessageScanOffset = $messageOffset
+                HeadLength        = $headLength
+                HeadHash          = $headHash
+                State             = $state
+            }
+        }
+
+        if (-not $stopped) {
+            $scanFrom = 0L
+            if ($null -ne $entry.MessageScanOffset) { $scanFrom = [long]$entry.MessageScanOffset }
+            if ($scanFrom -lt [long]$file.Length) {
+                if ($parsedAny -and $budget.Elapsed.TotalSeconds -ge $script:CodexParseBudgetSeconds) {
+                    $stopped = $true
+                } else {
+                    try {
+                        $scan = Add-CodexResponseItemUserMessages -Path $file.FullName -State $entry.State -Offset $scanFrom -Budget $budget
+                        $entry.MessageScanOffset = [long]$scan.NextOffset
+                        if ($scan.ReadAny) { $parsedAny = $true }
+                        if ($scan.Stopped) { $stopped = $true }
+                    } catch {
+                        Write-CodexLog "Get-CodexStats: user-message scan failed for $($file.FullName) - $($_.Exception.Message)"
+                    }
+                }
             }
         }
 
